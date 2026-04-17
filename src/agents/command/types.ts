@@ -1,6 +1,7 @@
 import type { AgentInternalEvent } from "../../agents/internal-events.js";
 import type { ClientToolDefinition } from "../../agents/pi-embedded-runner/run/params.js";
 import type { SpawnedRunMetadata } from "../../agents/spawned-context.js";
+import type { ReplyPayload } from "../../auto-reply/types.js";
 import type { ChannelOutboundTargetMode } from "../../channels/plugins/types.js";
 import type { InputProvenance } from "../../sessions/input-provenance.js";
 
@@ -88,6 +89,10 @@ export type AgentCommandOpts = {
   streamParams?: AgentStreamParams;
   /** Explicit workspace directory override (for subagents to inherit parent workspace). */
   workspaceDir?: SpawnedRunMetadata["workspaceDir"];
+  /** Experimental hook for structured run event capture. */
+  onAgentEvent?: (evt: { stream: string; data: Record<string, unknown> }) => void;
+  /** Experimental hook for structured tool result capture. */
+  onToolResult?: (payload: ReplyPayload) => void | Promise<void>;
 };
 
 export type AgentCommandIngressOpts = Omit<

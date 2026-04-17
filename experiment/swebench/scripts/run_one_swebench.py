@@ -66,20 +66,31 @@ def print_step(message: str) -> None:
     print(f"\n=== {message} ===")
 
 
-def load_instance(dataset_name: str, split: str, instance_id: str) -> dict[str, Any]:
-    print_step(f"Loading instance {instance_id} from {dataset_name} [{split}]")
+def load_dataset_split(dataset_name: str, split: str):
     try:
         from datasets import load_dataset
     except ImportError as exc:
         raise RuntimeError(
             "Python package 'datasets' is required. Install it in the current environment first."
         ) from exc
+    return load_dataset(dataset_name, split=split)
 
-    ds = load_dataset(dataset_name, split=split)
+
+def load_instance(dataset_name: str, split: str, instance_id: str) -> dict[str, Any]:
+    print_step(f"Loading instance {instance_id} from {dataset_name} [{split}]")
+    ds = load_dataset_split(dataset_name, split)
     for item in ds:
         if item["instance_id"] == instance_id:
             return dict(item)
     raise RuntimeError(f"Instance not found: {instance_id}")
+
+
+def load_instance_by_index(dataset_name: str, split: str, index: int) -> dict[str, Any]:
+    print_step(f"Loading dataset index {index} from {dataset_name} [{split}]")
+    ds = load_dataset_split(dataset_name, split)
+    if index < 0 or index >= len(ds):
+        raise RuntimeError(f"Index out of range: {index}. Dataset length is {len(ds)}")
+    return dict(ds[index])
 
 
 def repo_url_from_name(repo_name: str) -> str:
@@ -141,7 +152,7 @@ def ensure_openclaw_agent(agent_name: str, workspace_dir: Path, model: str) -> N
 def write_prompt_file(prompt_path: Path, problem_statement: str) -> None:
     print_step(f"Writing prompt file: {prompt_path}")
     prompt_path.parent.mkdir(parents=True, exist_ok=True)
-    prompt_path.write_text(problem_statement, encoding="utf-8")
+    prompt_path.write_text(SYSTEM_TASK_PREFIX + problem_statement, encoding="utf-8")
 
 
 SYSTEM_TASK_PREFIX = """You are solving one SWE-bench Lite task.
@@ -160,11 +171,57 @@ Issue description:
 """
 
 
-def invoke_openclaw(agent_name: str, workspace_dir: Path, problem_statement: str) -> str:
+def invoke_openclaw(
+    *,
+    agent_name: str,
+    workspace_dir: Path,
+    prompt_path: Path,
+    manifest_path: Path,
+    events_path: Path,
+    summary_path: Path,
+    stdout_path: Path,
+    final_path: Path,
+    instance_id: str,
+    dataset_name: str,
+    split: str,
+    run_protocol: str,
+) -> str:
     print_step("Invoking OpenClaw")
-    prompt = SYSTEM_TASK_PREFIX + problem_statement
+    session_id = f"swebench-{sanitize_name(instance_id)}"
+    script_path = Path(__file__).resolve().parent / "run_openclaw_trace.ts"
     result = run_cmd(
-        ["openclaw", "agent", "--agent", agent_name, "--message", prompt],
+        [
+            "node",
+            "--import",
+            "tsx",
+            str(script_path),
+            "--agent-id",
+            agent_name,
+            "--session-id",
+            session_id,
+            "--workspace-dir",
+            str(workspace_dir),
+            "--prompt-file",
+            str(prompt_path),
+            "--manifest-path",
+            str(manifest_path),
+            "--events-path",
+            str(events_path),
+            "--summary-path",
+            str(summary_path),
+            "--stdout-path",
+            str(stdout_path),
+            "--final-path",
+            str(final_path),
+            "--instance-id",
+            instance_id,
+            "--dataset-name",
+            dataset_name,
+            "--split",
+            split,
+            "--run-protocol",
+            run_protocol,
+        ],
         cwd=workspace_dir,
     )
     return result.stdout
@@ -252,18 +309,39 @@ def build_paths(base_dir: Path, instance_id: str) -> dict[str, Path]:
         base_dir / "outputs" / "predictions" / f"{instance_id}.predictions.jsonl"
     )
     report_dir = base_dir / "outputs" / "reports"
+    run_dir = base_dir / "outputs" / "runs" / instance_id
     return {
         "workspace_dir": workspace_dir,
         "prompt_path": prompt_path,
         "patch_path": patch_path,
         "predictions_path": predictions_path,
         "report_dir": report_dir,
+        "run_dir": run_dir,
+        "manifest_path": run_dir / "manifest.json",
+        "events_path": run_dir / "events.jsonl",
+        "summary_path": run_dir / "summary.json",
+        "stdout_path": run_dir / "stdout.txt",
+        "final_path": run_dir / "final.json",
+        "timeline_path": run_dir / "timeline.json",
+        "calls_path": run_dir / "calls.json",
+        "verification_path": run_dir / "verification.json",
+        "run_report_path": run_dir / "run_report.md",
     }
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run one SWE-bench Lite instance with OpenClaw")
-    parser.add_argument("instance_id", help="SWE-bench instance id, e.g. astropy__astropy-12907")
+    parser.add_argument(
+        "instance_id",
+        nargs="?",
+        help="SWE-bench instance id, e.g. astropy__astropy-12907",
+    )
+    parser.add_argument(
+        "--index",
+        type=int,
+        default=None,
+        help="Dataset index to resolve into an instance_id, e.g. --index 0",
+    )
     parser.add_argument(
         "--base-dir",
         default=str(Path(__file__).resolve().parents[1]),
@@ -313,8 +391,21 @@ def assert_workspace_clean(workspace_dir: Path) -> None:
 def main() -> int:
     args = parse_args()
 
+    if (args.instance_id is None) == (args.index is None):
+        raise RuntimeError("Pass exactly one of: instance_id or --index")
+
     base_dir = Path(args.base_dir).expanduser().resolve()
-    instance_id = args.instance_id
+
+    if args.index is not None:
+        item = load_instance_by_index(args.dataset_name, args.split, args.index)
+        instance_id = item["instance_id"]
+        print_step("Resolved dataset index")
+        print(f"index          : {args.index}")
+        print(f"instance_id    : {instance_id}")
+    else:
+        instance_id = args.instance_id
+        item = load_instance(args.dataset_name, args.split, instance_id)
+
     agent_name = args.agent_name or f"swebench-{instance_id}"
     run_id = f"openclaw_{sanitize_name(instance_id)}"
 
@@ -324,6 +415,16 @@ def main() -> int:
     patch_path = paths["patch_path"]
     predictions_path = paths["predictions_path"]
     report_dir = paths["report_dir"]
+    run_dir = paths["run_dir"]
+    manifest_path = paths["manifest_path"]
+    events_path = paths["events_path"]
+    summary_path = paths["summary_path"]
+    stdout_path = paths["stdout_path"]
+    final_path = paths["final_path"]
+    timeline_path = paths["timeline_path"]
+    calls_path = paths["calls_path"]
+    verification_path = paths["verification_path"]
+    run_report_path = paths["run_report_path"]
 
     print_step("Resolved directories")
     print(f"base_dir       : {base_dir}")
@@ -332,10 +433,10 @@ def main() -> int:
     print(f"patch_path     : {patch_path}")
     print(f"predictions    : {predictions_path}")
     print(f"report_dir     : {report_dir}")
+    print(f"run_dir        : {run_dir}")
     print(f"agent_name     : {agent_name}")
     print(f"model          : {args.model}")
 
-    item = load_instance(args.dataset_name, args.split, instance_id)
     repo_name = item["repo"]
     base_commit = item["base_commit"]
     problem_statement = item["problem_statement"]
@@ -357,7 +458,20 @@ def main() -> int:
     ensure_openclaw_agent(agent_name, workspace_dir, args.model)
     write_prompt_file(prompt_path, problem_statement)
 
-    openclaw_output = invoke_openclaw(agent_name, workspace_dir, problem_statement)
+    openclaw_output = invoke_openclaw(
+        agent_name=agent_name,
+        workspace_dir=workspace_dir,
+        prompt_path=prompt_path,
+        manifest_path=manifest_path,
+        events_path=events_path,
+        summary_path=summary_path,
+        stdout_path=stdout_path,
+        final_path=final_path,
+        instance_id=instance_id,
+        dataset_name=args.dataset_name,
+        split=args.split,
+        run_protocol="single_pass_no_retry",
+    )
     print_step("OpenClaw output")
     print(openclaw_output)
 
@@ -368,6 +482,14 @@ def main() -> int:
     print_step("Artifacts ready")
     print(f"Patch         : {patch_path}")
     print(f"Predictions   : {predictions_path}")
+    print(f"Manifest      : {manifest_path}")
+    print(f"Events        : {events_path}")
+    print(f"Summary       : {summary_path}")
+    print(f"Final         : {final_path}")
+    print(f"Timeline      : {timeline_path}")
+    print(f"Calls         : {calls_path}")
+    print(f"Verification  : {verification_path}")
+    print(f"Run report    : {run_report_path}")
 
     if not args.skip_eval:
         result = run_evaluation(

@@ -33,4 +33,15 @@ describe("Model Studio implicit provider", () => {
       ),
     ).toBe(false);
   });
+
+  it("should ship non-zero default pricing for the bundled Model Studio catalog", () => {
+    const provider = buildModelStudioProvider();
+    const qwen = provider.models?.find((model) => model.id === "qwen3.5-plus");
+    expect(qwen?.cost).toEqual({
+      input: 0.8,
+      output: 4.8,
+      cacheRead: 0,
+      cacheWrite: 0,
+    });
+  });
 });

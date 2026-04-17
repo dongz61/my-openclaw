@@ -17,9 +17,13 @@ import { consumePendingToolMediaIntoReply } from "./pi-embedded-subscribe.handle
 import type {
   EmbeddedPiSubscribeContext,
   EmbeddedPiSubscribeState,
+  UsageToolContext,
 } from "./pi-embedded-subscribe.handlers.types.js";
 import { filterToolResultMediaUrls } from "./pi-embedded-subscribe.tools.js";
-import type { SubscribeEmbeddedPiSessionParams } from "./pi-embedded-subscribe.types.js";
+import type {
+  SubscribeEmbeddedPiSessionParams,
+  UsageAgentEventData,
+} from "./pi-embedded-subscribe.types.js";
 import { formatReasoningMessage, stripDowngradedToolCallText } from "./pi-embedded-utils.js";
 import { hasNonzeroUsage, normalizeUsage, type UsageLike } from "./usage.js";
 
@@ -83,6 +87,9 @@ export function subscribeEmbeddedPiSession(params: SubscribeEmbeddedPiSessionPar
     pendingToolMediaUrls: [],
     pendingToolAudioAsVoice: false,
     deterministicApprovalPromptSent: false,
+    pendingUsageToolContext: undefined,
+    activeToolCallId: undefined,
+    activeToolName: undefined,
   };
   const usageTotals = {
     input: 0,
@@ -276,7 +283,45 @@ export function subscribeEmbeddedPiSession(params: SubscribeEmbeddedPiSessionPar
       state.compactionRetryPromise = null;
     }
   };
-  const recordAssistantUsage = (usageLike: unknown) => {
+  const extractAssistantToolContext = (message?: AgentMessage): UsageToolContext | undefined => {
+    if (!message || !Array.isArray(message.content)) {
+      return undefined;
+    }
+    const toolCallIds: string[] = [];
+    const toolNames: string[] = [];
+    for (const entry of message.content) {
+      if (!entry || typeof entry !== "object") {
+        continue;
+      }
+      const block = entry as Record<string, unknown>;
+      const type = typeof block.type === "string" ? block.type.trim().toLowerCase() : "";
+      if (!["toolcall", "tool_call", "tooluse", "tool_use"].includes(type)) {
+        continue;
+      }
+      const toolCallId =
+        typeof block.id === "string" && block.id.trim() ? block.id.trim() : undefined;
+      const toolName =
+        typeof block.name === "string" && block.name.trim() ? block.name.trim() : undefined;
+      if (toolCallId) {
+        toolCallIds.push(toolCallId);
+      }
+      if (toolName) {
+        toolNames.push(toolName);
+      }
+    }
+    if (toolCallIds.length === 0 && toolNames.length === 0) {
+      return undefined;
+    }
+    return {
+      ...(toolCallIds.length === 1 ? { toolCallId: toolCallIds[0] } : {}),
+      ...(toolNames.length === 1 ? { toolName: toolNames[0] } : {}),
+      ...(toolCallIds.length > 0 ? { toolCallIds } : {}),
+      ...(toolNames.length > 0 ? { toolNames } : {}),
+      boundary: "before_tool_result",
+    };
+  };
+
+  const recordAssistantUsage = (usageLike: unknown, message?: AgentMessage) => {
     const usage = normalizeUsage((usageLike ?? undefined) as UsageLike | undefined);
     if (!hasNonzeroUsage(usage)) {
       return;
@@ -289,6 +334,47 @@ export function subscribeEmbeddedPiSession(params: SubscribeEmbeddedPiSessionPar
       usage.total ??
       (usage.input ?? 0) + (usage.output ?? 0) + (usage.cacheRead ?? 0) + (usage.cacheWrite ?? 0);
     usageTotals.total += usageTotal;
+    const cumulativeUsage = getUsageTotals();
+    const toolContext =
+      state.pendingUsageToolContext ??
+      extractAssistantToolContext(message) ??
+      (message ? { boundary: "final_response" as const } : undefined);
+    const provider = typeof message?.provider === "string" ? message.provider : undefined;
+    const model = typeof message?.model === "string" ? message.model : undefined;
+    const usageEvent: UsageAgentEventData = {
+      phase: "model_call_complete",
+      ...(provider ? { provider } : {}),
+      ...(model ? { model } : {}),
+      usage: {
+        ...(typeof usage.input === "number" ? { input: usage.input } : {}),
+        ...(typeof usage.output === "number" ? { output: usage.output } : {}),
+        ...(typeof usage.cacheRead === "number" ? { cacheRead: usage.cacheRead } : {}),
+        ...(typeof usage.cacheWrite === "number" ? { cacheWrite: usage.cacheWrite } : {}),
+        ...(typeof usageTotal === "number" ? { total: usageTotal } : {}),
+      },
+      cumulativeUsage: {
+        ...(typeof cumulativeUsage?.input === "number" ? { input: cumulativeUsage.input } : {}),
+        ...(typeof cumulativeUsage?.output === "number" ? { output: cumulativeUsage.output } : {}),
+        ...(typeof cumulativeUsage?.cacheRead === "number"
+          ? { cacheRead: cumulativeUsage.cacheRead }
+          : {}),
+        ...(typeof cumulativeUsage?.cacheWrite === "number"
+          ? { cacheWrite: cumulativeUsage.cacheWrite }
+          : {}),
+        ...(typeof cumulativeUsage?.total === "number" ? { total: cumulativeUsage.total } : {}),
+      },
+      ...(toolContext ? { toolContext } : {}),
+    };
+    emitAgentEvent({
+      runId: params.runId,
+      stream: "usage",
+      data: usageEvent as unknown as Record<string, unknown>,
+    });
+    void params.onAgentEvent?.({
+      stream: "usage",
+      data: usageEvent as unknown as Record<string, unknown>,
+    });
+    state.pendingUsageToolContext = undefined;
   };
   const getUsageTotals = () => {
     const hasUsage =
@@ -613,6 +699,9 @@ export function subscribeEmbeddedPiSession(params: SubscribeEmbeddedPiSessionPar
     state.pendingToolMediaUrls = [];
     state.pendingToolAudioAsVoice = false;
     state.deterministicApprovalPromptSent = false;
+    state.pendingUsageToolContext = undefined;
+    state.activeToolCallId = undefined;
+    state.activeToolName = undefined;
     resetAssistantMessageState(0);
   };
 

@@ -137,3 +137,21 @@ docs/superpowers
 
 # Deprecated changelog fragment workflow
 changelog/fragments/
+experiment/target.md
+experiment/plan.md
+experiment/swebench/prompts/
+experiment/swebench/outputs/
+experiment/study.md
+experiment/report.md
+experiment/swebench/workspaces/
+HEARTBEAT.md
+SOUL.md
+TOOLS.md
+.openclaw/workspace-state.json
+openclaw+modelstudio__qwen3.5-plus.openclaw_astropy__astropy-7746.json
+logs/run_evaluation/openclaw_astropy__astropy-7746/openclaw+modelstudio__qwen3.5-plus/astropy__astropy-7746/patch.diff
+logs/run_evaluation/openclaw_astropy__astropy-7746/openclaw+modelstudio__qwen3.5-plus/astropy__astropy-7746/test_output.txt
+logs/run_evaluation/openclaw_astropy__astropy-7746/openclaw+modelstudio__qwen3.5-plus/astropy__astropy-7746/run_instance.log
+.codex
+logs/run_evaluation/openclaw_astropy__astropy-7746/openclaw+modelstudio__qwen3.5-plus/astropy__astropy-7746/report.json
+logs/run_evaluation/openclaw_astropy__astropy-7746/openclaw+modelstudio__qwen3.5-plus/astropy__astropy-7746/eval.sh

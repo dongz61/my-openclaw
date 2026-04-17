@@ -157,6 +157,28 @@ describe("normalizeModelCompat", () => {
     });
   });
 
+  it("keeps supportsUsageInStreaming on for native DashScope-compatible endpoints", () => {
+    const model = {
+      ...baseModel(),
+      provider: "modelstudio",
+      baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    };
+    delete (model as { compat?: unknown }).compat;
+    const normalized = normalizeModelCompat(model);
+    expect(supportsUsageInStreaming(normalized)).toBe(true);
+  });
+
+  it("keeps supportsUsageInStreaming on for native Moonshot endpoints", () => {
+    const model = {
+      ...baseModel(),
+      provider: "moonshot",
+      baseUrl: "https://api.moonshot.ai/v1",
+    };
+    delete (model as { compat?: unknown }).compat;
+    const normalized = normalizeModelCompat(model);
+    expect(supportsUsageInStreaming(normalized)).toBe(true);
+  });
+
   it("leaves native api.openai.com model untouched", () => {
     const model = {
       ...baseModel(),

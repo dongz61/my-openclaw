@@ -3,6 +3,14 @@ import type { ModelCompatConfig } from "../config/types.models.js";
 
 export const XAI_TOOL_SCHEMA_PROFILE = "xai";
 export const HTML_ENTITY_TOOL_CALL_ARGUMENTS_ENCODING = "html-entities";
+const NATIVE_STREAMING_USAGE_BASE_URLS = new Set([
+  "https://api.moonshot.ai/v1",
+  "https://api.moonshot.cn/v1",
+  "https://coding-intl.dashscope.aliyuncs.com/v1",
+  "https://coding.dashscope.aliyuncs.com/v1",
+  "https://dashscope.aliyuncs.com/compatible-mode/v1",
+  "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+]);
 
 function extractModelCompat(
   modelOrCompat: { compat?: unknown } | ModelCompatConfig | undefined,
@@ -98,6 +106,26 @@ function isAnthropicMessagesModel(model: Model<Api>): model is Model<"anthropic-
 function normalizeAnthropicBaseUrl(baseUrl: string): string {
   return baseUrl.replace(/\/v1\/?$/, "");
 }
+
+function normalizeCompatBaseUrl(baseUrl: string): string {
+  const trimmed = baseUrl.trim();
+  if (!trimmed) {
+    return "";
+  }
+  try {
+    const url = new URL(trimmed);
+    url.hash = "";
+    url.search = "";
+    return url.toString().replace(/\/+$/, "").toLowerCase();
+  } catch {
+    return trimmed.replace(/\/+$/, "").toLowerCase();
+  }
+}
+
+function supportsNativeStreamingUsage(baseUrl: string): boolean {
+  return NATIVE_STREAMING_USAGE_BASE_URLS.has(normalizeCompatBaseUrl(baseUrl));
+}
+
 export function normalizeModelCompat(model: Model<Api>): Model<Api> {
   const baseUrl = model.baseUrl ?? "";
 
@@ -129,6 +157,8 @@ export function normalizeModelCompat(model: Model<Api>): Model<Api> {
   }
   const forcedDeveloperRole = compat?.supportsDeveloperRole === true;
   const hasStreamingUsageOverride = compat?.supportsUsageInStreaming !== undefined;
+  const defaultStreamingUsage =
+    hasStreamingUsageOverride || !supportsNativeStreamingUsage(baseUrl) ? false : true;
   const targetStrictMode = compat?.supportsStrictMode ?? false;
   if (
     compat?.supportsDeveloperRole !== undefined &&
@@ -145,12 +175,12 @@ export function normalizeModelCompat(model: Model<Api>): Model<Api> {
       ? {
           ...compat,
           supportsDeveloperRole: forcedDeveloperRole || false,
-          ...(hasStreamingUsageOverride ? {} : { supportsUsageInStreaming: false }),
+          ...(hasStreamingUsageOverride ? {} : { supportsUsageInStreaming: defaultStreamingUsage }),
           supportsStrictMode: targetStrictMode,
         }
       : {
           supportsDeveloperRole: false,
-          supportsUsageInStreaming: false,
+          supportsUsageInStreaming: defaultStreamingUsage,
           supportsStrictMode: false,
         },
   } as typeof model;

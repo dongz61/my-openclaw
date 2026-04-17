@@ -372,6 +372,7 @@ function runAgentAttempt(params: {
   resolvedVerboseLevel: VerboseLevel | undefined;
   agentDir: string;
   onAgentEvent: (evt: { stream: string; data?: Record<string, unknown> }) => void;
+  onToolResult?: AgentCommandOpts["onToolResult"];
   authProfileProvider: string;
   sessionStore?: Record<string, SessionEntry>;
   storePath?: string;
@@ -528,6 +529,7 @@ function runAgentAttempt(params: {
     agentDir: params.agentDir,
     allowTransientCooldownProbe: params.allowTransientCooldownProbe,
     onAgentEvent: params.onAgentEvent,
+    onToolResult: params.onToolResult,
     bootstrapPromptWarningSignaturesSeen,
     bootstrapPromptWarningSignature,
   });
@@ -1215,7 +1217,12 @@ async function agentCommandInternal(
               ) {
                 lifecycleEnded = true;
               }
+              opts.onAgentEvent?.({
+                stream: evt.stream,
+                data: evt.data ?? {},
+              });
             },
+            onToolResult: opts.onToolResult,
           });
         },
       });

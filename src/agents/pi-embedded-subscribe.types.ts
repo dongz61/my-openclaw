@@ -5,6 +5,7 @@ import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { HookRunner } from "../plugins/hooks.js";
 import type { BlockReplyChunking } from "./pi-embedded-block-chunker.js";
 import type { BlockReplyPayload } from "./pi-embedded-payloads.js";
+import type { UsageToolContext } from "./pi-embedded-subscribe.handlers.types.js";
 
 export type ToolResultFormat = "markdown" | "plain";
 
@@ -36,6 +37,27 @@ export type SubscribeEmbeddedPiSessionParams = {
   sessionId?: string;
   /** Agent identity for hook context — resolved from session config in attempt.ts. */
   agentId?: string;
+};
+
+export type UsageAgentEventData = {
+  phase: "model_call_complete";
+  provider?: string;
+  model?: string;
+  usage: {
+    input?: number;
+    output?: number;
+    cacheRead?: number;
+    cacheWrite?: number;
+    total?: number;
+  };
+  cumulativeUsage: {
+    input?: number;
+    output?: number;
+    cacheRead?: number;
+    cacheWrite?: number;
+    total?: number;
+  };
+  toolContext?: UsageToolContext;
 };
 
 export type { BlockReplyChunking } from "./pi-embedded-block-chunker.js";

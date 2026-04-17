@@ -12,6 +12,14 @@ import type {
 } from "./pi-embedded-subscribe.types.js";
 import type { NormalizedUsage } from "./usage.js";
 
+export type UsageToolContext = {
+  toolCallId?: string;
+  toolName?: string;
+  toolCallIds?: string[];
+  toolNames?: string[];
+  boundary: "before_tool_result" | "after_tool_result" | "final_response";
+};
+
 export type EmbeddedSubscribeLogger = {
   debug: (message: string, meta?: Record<string, unknown>) => void;
   warn: (message: string, meta?: Record<string, unknown>) => void;
@@ -81,6 +89,9 @@ export type EmbeddedPiSubscribeState = {
   pendingToolAudioAsVoice: boolean;
   deterministicApprovalPromptSent: boolean;
   lastAssistant?: AgentMessage;
+  pendingUsageToolContext?: UsageToolContext;
+  activeToolCallId?: string;
+  activeToolName?: string;
 };
 
 export type EmbeddedPiSubscribeContext = {
@@ -123,7 +134,7 @@ export type EmbeddedPiSubscribeContext = {
   noteCompactionRetry: () => void;
   resolveCompactionRetry: () => void;
   maybeResolveCompactionWait: () => void;
-  recordAssistantUsage: (usage: unknown) => void;
+  recordAssistantUsage: (usage: unknown, message?: AgentMessage) => void;
   incrementCompactionCount: () => void;
   getUsageTotals: () => NormalizedUsage | undefined;
   getCompactionCount: () => number;
@@ -163,6 +174,9 @@ export type ToolHandlerState = Pick<
   | "messagingToolSentTargets"
   | "successfulCronAdds"
   | "deterministicApprovalPromptSent"
+  | "pendingUsageToolContext"
+  | "activeToolCallId"
+  | "activeToolName"
 >;
 
 export type ToolHandlerContext = {

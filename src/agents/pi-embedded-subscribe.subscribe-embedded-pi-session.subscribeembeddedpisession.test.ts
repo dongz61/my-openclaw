@@ -149,6 +149,78 @@ describe("subscribeEmbeddedPiSession", () => {
       ]);
     },
   );
+
+  it("emits usage events with tool context after tool results", () => {
+    const { emit, onAgentEvent } = createAgentEventHarness();
+
+    emit({
+      type: "tool_execution_start",
+      toolName: "read",
+      toolCallId: "call-read-1",
+      args: { path: "/tmp/demo.txt" },
+    });
+    emit({
+      type: "tool_execution_end",
+      toolName: "read",
+      toolCallId: "call-read-1",
+      isError: false,
+      result: { text: "ok" },
+    });
+
+    const assistantMessage = {
+      role: "assistant",
+      provider: "modelstudio",
+      model: "qwen3.5-plus",
+      usage: { input: 120, output: 30, totalTokens: 150 },
+      content: [{ type: "toolCall", id: "call-edit-2", name: "edit", arguments: {} }],
+    } as AssistantMessage;
+
+    emit({ type: "message_end", message: assistantMessage });
+
+    const usageEvents = onAgentEvent.mock.calls
+      .map((call) => call[0] as { stream?: string; data?: Record<string, unknown> })
+      .filter((event) => event.stream === "usage");
+    expect(usageEvents).toHaveLength(1);
+    expect(usageEvents[0]?.data).toMatchObject({
+      phase: "model_call_complete",
+      provider: "modelstudio",
+      model: "qwen3.5-plus",
+      usage: { input: 120, output: 30, total: 150 },
+      cumulativeUsage: { input: 120, output: 30, total: 150 },
+      toolContext: {
+        toolCallId: "call-read-1",
+        toolName: "read",
+        boundary: "after_tool_result",
+      },
+    });
+  });
+
+  it("emits usage events for tool-calling assistant turns before tool results arrive", () => {
+    const { emit, onAgentEvent } = createAgentEventHarness();
+
+    const assistantMessage = {
+      role: "assistant",
+      usage: { input: 80, output: 20, totalTokens: 100 },
+      content: [{ type: "toolCall", id: "call-exec-1", name: "exec", arguments: {} }],
+    } as AssistantMessage;
+
+    emit({ type: "message_end", message: assistantMessage });
+
+    const usageEvents = onAgentEvent.mock.calls
+      .map((call) => call[0] as { stream?: string; data?: Record<string, unknown> })
+      .filter((event) => event.stream === "usage");
+    expect(usageEvents).toHaveLength(1);
+    expect(usageEvents[0]?.data).toMatchObject({
+      phase: "model_call_complete",
+      usage: { input: 80, output: 20, total: 100 },
+      cumulativeUsage: { input: 80, output: 20, total: 100 },
+      toolContext: {
+        toolCallId: "call-exec-1",
+        toolName: "exec",
+        boundary: "before_tool_result",
+      },
+    });
+  });
   it.each(THINKING_TAG_CASES)(
     "suppresses <%s> blocks across chunk boundaries",
     async ({ open, close }) => {
