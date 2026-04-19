@@ -15,6 +15,7 @@ type CliArgs = {
   sessionId: string;
   workspaceDir: string;
   promptFile: string;
+  extraSystemPromptFile?: string;
   manifestPath: string;
   eventsPath: string;
   summaryPath: string;
@@ -128,6 +129,7 @@ function parseArgs(argv: string[]): CliArgs {
     sessionId: getRequired("session-id"),
     workspaceDir: getRequired("workspace-dir"),
     promptFile: getRequired("prompt-file"),
+    extraSystemPromptFile: map.get("extra-system-prompt-file")?.trim() || undefined,
     manifestPath: getRequired("manifest-path"),
     eventsPath: getRequired("events-path"),
     summaryPath: getRequired("summary-path"),
@@ -725,6 +727,9 @@ async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const runId = randomUUID();
   const prompt = await fs.readFile(args.promptFile, "utf8");
+  const extraSystemPrompt = args.extraSystemPromptFile
+    ? await fs.readFile(args.extraSystemPromptFile, "utf8")
+    : undefined;
   providerUsageCaptures.length = 0;
   providerUsageCaptureLogs.length = 0;
   const runtimeLogs: string[] = [];
@@ -759,6 +764,7 @@ async function main(): Promise<void> {
         sessionId: args.sessionId,
         workspaceDir: args.workspaceDir,
         message: prompt,
+        extraSystemPrompt,
         runId,
         onAgentEvent: (evt) => {
           if (evt.stream === "usage") {
@@ -898,6 +904,7 @@ async function main(): Promise<void> {
     sessionId: args.sessionId,
     workspaceDir: args.workspaceDir,
     promptFile: args.promptFile,
+    ...(args.extraSystemPromptFile ? { extraSystemPromptFile: args.extraSystemPromptFile } : {}),
     runProtocol: args.runProtocol,
     startedAt: new Date(startedAt).toISOString(),
     endedAt: new Date(endedAt).toISOString(),

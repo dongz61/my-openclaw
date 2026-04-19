@@ -30,6 +30,13 @@ from typing import Any
 DEFAULT_DATASET = "SWE-bench/SWE-bench_Lite"
 DEFAULT_SPLIT = "test"
 DEFAULT_MODEL = "modelstudio/qwen3.5-plus"
+DEFAULT_EXPERIMENT_TAG = "baseline"
+DEFAULT_EXTRA_SYSTEM_PROMPT_FILE = (
+    Path(__file__).resolve().parents[1]
+    / "prompts"
+    / "system"
+    / "swebench_code_repair_system_prompt.txt"
+)
 
 
 class CommandError(RuntimeError):
@@ -176,6 +183,7 @@ def invoke_openclaw(
     agent_name: str,
     workspace_dir: Path,
     prompt_path: Path,
+    extra_system_prompt_file: Path | None,
     manifest_path: Path,
     events_path: Path,
     summary_path: Path,
@@ -203,6 +211,14 @@ def invoke_openclaw(
             str(workspace_dir),
             "--prompt-file",
             str(prompt_path),
+            *(
+                [
+                    "--extra-system-prompt-file",
+                    str(extra_system_prompt_file),
+                ]
+                if extra_system_prompt_file
+                else []
+            ),
             "--manifest-path",
             str(manifest_path),
             "--events-path",
@@ -301,16 +317,32 @@ def sanitize_name(name: str) -> str:
     return name.replace("/", "__")
 
 
-def build_paths(base_dir: Path, instance_id: str) -> dict[str, Path]:
+def sanitize_tag(value: str) -> str:
+    normalized = "".join(
+        char if char.isalnum() or char in {"-", "_", "."} else "-"
+        for char in value.strip()
+    ).strip(".-")
+    if not normalized:
+        raise RuntimeError("experiment_tag is empty after sanitization")
+    return normalized
+
+
+def resolve_experiment_dir(base_dir: Path, experiment_tag: str) -> Path:
+    if experiment_tag == "baseline":
+        return base_dir / "outputs_baseline"
+    return base_dir / f"outputs_{experiment_tag}"
+
+
+def build_paths(base_dir: Path, instance_id: str, experiment_tag: str) -> dict[str, Path]:
+    experiment_dir = resolve_experiment_dir(base_dir, experiment_tag)
     workspace_dir = base_dir / "workspaces" / instance_id
     prompt_path = base_dir / "prompts" / f"{instance_id}_prompt.txt"
-    patch_path = base_dir / "outputs" / "patches" / f"{instance_id}.patch.diff"
-    predictions_path = (
-        base_dir / "outputs" / "predictions" / f"{instance_id}.predictions.jsonl"
-    )
-    report_dir = base_dir / "outputs" / "reports"
-    run_dir = base_dir / "outputs" / "runs" / instance_id
+    patch_path = experiment_dir / "patches" / f"{instance_id}.patch.diff"
+    predictions_path = experiment_dir / "predictions" / f"{instance_id}.predictions.jsonl"
+    report_dir = experiment_dir / "reports"
+    run_dir = experiment_dir / "runs" / instance_id
     return {
+        "experiment_dir": experiment_dir,
         "workspace_dir": workspace_dir,
         "prompt_path": prompt_path,
         "patch_path": patch_path,
@@ -350,6 +382,22 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dataset-name", default=DEFAULT_DATASET)
     parser.add_argument("--split", default=DEFAULT_SPLIT)
     parser.add_argument("--model", default=DEFAULT_MODEL)
+    parser.add_argument(
+        "--experiment-tag",
+        default=DEFAULT_EXPERIMENT_TAG,
+        help=(
+            "Output namespace under experiment/swebench/outputs/. "
+            "Use a new tag for each experiment to avoid overwriting prior results."
+        ),
+    )
+    parser.add_argument(
+        "--extra-system-prompt-file",
+        default=str(DEFAULT_EXTRA_SYSTEM_PROMPT_FILE),
+        help=(
+            "Optional extra system prompt file injected into OpenClaw for SWE-bench runs. "
+            "Pass an empty string to disable."
+        ),
+    )
     parser.add_argument(
         "--agent-name",
         default=None,
@@ -395,6 +443,7 @@ def main() -> int:
         raise RuntimeError("Pass exactly one of: instance_id or --index")
 
     base_dir = Path(args.base_dir).expanduser().resolve()
+    experiment_tag = sanitize_tag(args.experiment_tag)
 
     if args.index is not None:
         item = load_instance_by_index(args.dataset_name, args.split, args.index)
@@ -409,7 +458,8 @@ def main() -> int:
     agent_name = args.agent_name or f"swebench-{instance_id}"
     run_id = f"openclaw_{sanitize_name(instance_id)}"
 
-    paths = build_paths(base_dir, instance_id)
+    paths = build_paths(base_dir, instance_id, experiment_tag)
+    experiment_dir = paths["experiment_dir"]
     workspace_dir = paths["workspace_dir"]
     prompt_path = paths["prompt_path"]
     patch_path = paths["patch_path"]
@@ -425,9 +475,16 @@ def main() -> int:
     calls_path = paths["calls_path"]
     verification_path = paths["verification_path"]
     run_report_path = paths["run_report_path"]
+    extra_system_prompt_file = (
+        Path(args.extra_system_prompt_file).expanduser().resolve()
+        if args.extra_system_prompt_file
+        else None
+    )
 
     print_step("Resolved directories")
     print(f"base_dir       : {base_dir}")
+    print(f"experiment_tag : {experiment_tag}")
+    print(f"experiment_dir : {experiment_dir}")
     print(f"workspace_dir  : {workspace_dir}")
     print(f"prompt_path    : {prompt_path}")
     print(f"patch_path     : {patch_path}")
@@ -436,6 +493,7 @@ def main() -> int:
     print(f"run_dir        : {run_dir}")
     print(f"agent_name     : {agent_name}")
     print(f"model          : {args.model}")
+    print(f"extra_system   : {extra_system_prompt_file or '(disabled)'}")
 
     repo_name = item["repo"]
     base_commit = item["base_commit"]
@@ -462,6 +520,7 @@ def main() -> int:
         agent_name=agent_name,
         workspace_dir=workspace_dir,
         prompt_path=prompt_path,
+        extra_system_prompt_file=extra_system_prompt_file,
         manifest_path=manifest_path,
         events_path=events_path,
         summary_path=summary_path,

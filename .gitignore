@@ -141,9 +141,12 @@ experiment/target.md
 experiment/plan.md
 experiment/swebench/prompts/
 experiment/swebench/outputs/
+experiment/swebench/outputs_*/
+experiment/swebench/outputs_baseline/
 experiment/study.md
 experiment/report.md
 experiment/swebench/workspaces/
+experiment/swebench/workspaces/*/.prompt-export/
 HEARTBEAT.md
 SOUL.md
 TOOLS.md
