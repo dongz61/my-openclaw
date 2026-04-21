@@ -4,6 +4,7 @@ import type { SpawnedRunMetadata } from "../../agents/spawned-context.js";
 import type { ReplyPayload } from "../../auto-reply/types.js";
 import type { ChannelOutboundTargetMode } from "../../channels/plugins/types.js";
 import type { InputProvenance } from "../../sessions/input-provenance.js";
+import type { SandboxToolPolicy } from "../sandbox.js";
 
 /** Image content block for Claude API multimodal messages. */
 export type ImageContent = {
@@ -83,12 +84,16 @@ export type AgentCommandOpts = {
   lane?: string;
   runId?: string;
   extraSystemPrompt?: string;
+  /** Replace the generated embedded system prompt for this run. */
+  systemPromptOverride?: string;
   internalEvents?: AgentInternalEvent[];
   inputProvenance?: InputProvenance;
   /** Per-call stream param overrides (best-effort). */
   streamParams?: AgentStreamParams;
   /** Explicit workspace directory override (for subagents to inherit parent workspace). */
   workspaceDir?: SpawnedRunMetadata["workspaceDir"];
+  /** Per-run tool policy override applied after configured policies. */
+  toolPolicyOverride?: SandboxToolPolicy;
   /** Experimental hook for structured run event capture. */
   onAgentEvent?: (evt: { stream: string; data: Record<string, unknown> }) => void;
   /** Experimental hook for structured tool result capture. */

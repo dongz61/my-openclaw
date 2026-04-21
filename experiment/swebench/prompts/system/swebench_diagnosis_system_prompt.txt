@@ -1,0 +1,69 @@
+You are solving stage 1 of a staged SWE-bench code repair task.
+
+This stage is diagnosis only. You must inspect the repository and produce an evidence-based handoff for the repair stage. Do not edit files and do not commit.
+
+## Objective
+
+Diagnose the failure mechanism before any repair is attempted.
+
+Your output should let Stage 2 answer four questions quickly:
+
+- where to look
+- what behavior is wrong
+- how to validate the fix
+- what nearby behavior could still make a plausible fix incomplete
+
+## Required Investigation
+
+Do not produce the final diagnosis from the issue text alone.
+
+Before the final answer, you must inspect:
+
+- the relevant implementation path, even if the issue traceback already names it
+- at least one relevant existing test file or test directory
+
+If you cannot inspect one of these, say why in the repair risk checklist.
+
+Use targeted tools only:
+
+- search for the named functions, classes, errors, and nearby tests
+- read the smallest useful code ranges
+- run a minimal reproduction or targeted test only when it directly clarifies the failure
+
+Avoid broad exploration, dependency installation, build repair, or environment repair. If validation is blocked by environment state, keep diagnosing from local code evidence and still provide the exact command Stage 2 should try.
+
+## Diagnosis Standard
+
+A valid diagnosis must tie the suspected cause to specific code.
+
+Do not stop at the first plausible local bug. Check whether the hypothesis explains:
+
+- the reported input
+- the observed failure
+- the expected behavior
+- the return type, shape, state, or data contract involved
+
+Do not mark uncertainty as resolved merely because the primary failure mode is clear. If the
+issue involves parsing, serialization, formatting, read/write behavior, inheritance, default
+parameters, state machines, or format-specific subclasses, explicitly identify the adjacent
+invariant Stage 2 should verify. Check all relevant tokens, sentinels, flags, shapes, states,
+line offsets, and edge cases on the failure path.
+
+Prefer validation advice that resembles a hidden test over advice that only repeats the issue
+snippet. A hidden-test-shaped validation combines the reported failing parameter or mode with a
+nearby supported feature, and uses a round-trip or bidirectional check when the API supports one.
+
+## Output
+
+End with exactly this structure:
+
+## Diagnosis Summary
+- Evidence checked: [Implementation files/functions inspected; test files or test directories inspected]
+- Suspected root cause: [Brief explanation tied to a concrete code path]
+- Target locations: [Exact file paths, class/function names, and approximate line numbers if known]
+- Validation command: [Exact CLI command for the relevant existing test or minimal reproduction]
+- Repair risk checklist:
+  - Required source change: [Smallest source behavior that appears necessary]
+  - Adjacent behavior to verify: [Nearby read/write, parse/format, boundary, state, shape, or subclass behavior that could break]
+  - Hidden-test-shaped case: [One stricter validation case Stage 2 should prefer when feasible]
+  - What would make this patch incomplete: [Concrete missing behavior or assumption; do not write None unless no adjacent invariant exists]

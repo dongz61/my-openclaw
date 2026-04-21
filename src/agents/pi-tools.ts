@@ -45,7 +45,7 @@ import {
 } from "./pi-tools.read.js";
 import { cleanToolSchemaForGemini, normalizeToolParameters } from "./pi-tools.schema.js";
 import type { AnyAgentTool } from "./pi-tools.types.js";
-import type { SandboxContext } from "./sandbox.js";
+import type { SandboxContext, SandboxToolPolicy } from "./sandbox.js";
 import { createToolFsPolicy, resolveToolFsConfig } from "./tool-fs-policy.js";
 import {
   applyToolPolicyPipeline,
@@ -271,6 +271,8 @@ export function createOpenClawCodingTools(options?: {
   requireExplicitMessageTarget?: boolean;
   /** If true, omit the message tool from the tool list. */
   disableMessageTool?: boolean;
+  /** Per-run tool policy override applied after configured policies. */
+  toolPolicyOverride?: SandboxToolPolicy;
   /** Whether the sender is an owner (required for owner-only tools). */
   senderIsOwner?: boolean;
   /** Callback invoked when sessions_yield tool is called. */
@@ -344,6 +346,7 @@ export function createOpenClawCodingTools(options?: {
     groupPolicy,
     sandboxToolPolicy,
     subagentPolicy,
+    options?.toolPolicyOverride,
   ]);
   const execConfig = resolveExecConfig({ cfg: options?.config, agentId });
   const fsConfig = resolveToolFsConfig({ cfg: options?.config, agentId });
@@ -600,6 +603,7 @@ export function createOpenClawCodingTools(options?: {
       }),
       { policy: sandboxToolPolicy, label: "sandbox tools.allow" },
       { policy: subagentPolicy, label: "subagent tools.allow" },
+      { policy: options?.toolPolicyOverride, label: "run tool policy" },
     ],
   });
   // Always normalize tool JSON Schemas before handing them to pi-agent/pi-ai.

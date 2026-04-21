@@ -139,7 +139,8 @@ docs/superpowers
 changelog/fragments/
 experiment/target.md
 experiment/plan.md
-experiment/swebench/prompts/
+logs/
+experiment/swebench/prompts/astropy*
 experiment/swebench/outputs/
 experiment/swebench/outputs_*/
 experiment/swebench/outputs_baseline/
@@ -158,3 +159,7 @@ logs/run_evaluation/openclaw_astropy__astropy-7746/openclaw+modelstudio__qwen3.5
 .codex
 logs/run_evaluation/openclaw_astropy__astropy-7746/openclaw+modelstudio__qwen3.5-plus/astropy__astropy-7746/report.json
 logs/run_evaluation/openclaw_astropy__astropy-7746/openclaw+modelstudio__qwen3.5-plus/astropy__astropy-7746/eval.sh
+experiment/process.md
+experiment/README.md
+experiment/swebench/cache-trace-baseline-12907.system.txt
+experiment/swebench/cache-trace-minimal-12907.jsonl

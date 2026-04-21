@@ -8,6 +8,7 @@ import type { ExecElevatedDefaults, ExecToolDefaults } from "../../bash-tools.js
 import type { AgentStreamParams } from "../../command/types.js";
 import type { BlockReplyPayload } from "../../pi-embedded-payloads.js";
 import type { BlockReplyChunking, ToolResultFormat } from "../../pi-embedded-subscribe.js";
+import type { SandboxToolPolicy } from "../../sandbox.js";
 import type { SkillSnapshot } from "../../skills.js";
 
 // Simplified tool definition for client-provided tools (OpenResponses hosted tools)
@@ -99,6 +100,8 @@ export type RunEmbeddedPiAgentParams = {
   bootstrapPromptWarningSignature?: string;
   execOverrides?: Pick<ExecToolDefaults, "host" | "security" | "ask" | "node">;
   bashElevated?: ExecElevatedDefaults;
+  /** Per-run tool policy override applied after configured policies. */
+  toolPolicyOverride?: SandboxToolPolicy;
   timeoutMs: number;
   runId: string;
   abortSignal?: AbortSignal;
@@ -117,6 +120,8 @@ export type RunEmbeddedPiAgentParams = {
   lane?: string;
   enqueue?: typeof enqueueCommand;
   extraSystemPrompt?: string;
+  /** Replace the generated embedded system prompt for this run. */
+  systemPromptOverride?: string;
   inputProvenance?: InputProvenance;
   streamParams?: AgentStreamParams;
   ownerNumbers?: string[];

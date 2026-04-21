@@ -13,9 +13,13 @@ import { providerUsageCaptureLogs, providerUsageCaptures } from "./provider-usag
 type CliArgs = {
   agentId: string;
   sessionId: string;
+  sessionKey?: string;
   workspaceDir: string;
   promptFile: string;
   extraSystemPromptFile?: string;
+  systemPromptFile?: string;
+  toolAllow?: string[];
+  toolDeny?: string[];
   manifestPath: string;
   eventsPath: string;
   summaryPath: string;
@@ -127,9 +131,13 @@ function parseArgs(argv: string[]): CliArgs {
   return {
     agentId: getRequired("agent-id"),
     sessionId: getRequired("session-id"),
+    sessionKey: map.get("session-key")?.trim() || undefined,
     workspaceDir: getRequired("workspace-dir"),
     promptFile: getRequired("prompt-file"),
     extraSystemPromptFile: map.get("extra-system-prompt-file")?.trim() || undefined,
+    systemPromptFile: map.get("system-prompt-file")?.trim() || undefined,
+    toolAllow: parseCommaList(map.get("tool-allow")),
+    toolDeny: parseCommaList(map.get("tool-deny")),
     manifestPath: getRequired("manifest-path"),
     eventsPath: getRequired("events-path"),
     summaryPath: getRequired("summary-path"),
@@ -140,6 +148,14 @@ function parseArgs(argv: string[]): CliArgs {
     split: map.get("split")?.trim() || undefined,
     runProtocol: map.get("run-protocol")?.trim() || "single_pass_no_retry",
   };
+}
+
+function parseCommaList(value: string | undefined): string[] | undefined {
+  const items = (value ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return items.length > 0 ? items : undefined;
 }
 
 async function ensureParent(filePath: string): Promise<void> {
@@ -727,8 +743,14 @@ async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const runId = randomUUID();
   const prompt = await fs.readFile(args.promptFile, "utf8");
+  if (args.extraSystemPromptFile && args.systemPromptFile) {
+    throw new Error("Pass only one of --extra-system-prompt-file or --system-prompt-file.");
+  }
   const extraSystemPrompt = args.extraSystemPromptFile
     ? await fs.readFile(args.extraSystemPromptFile, "utf8")
+    : undefined;
+  const systemPromptOverride = args.systemPromptFile
+    ? await fs.readFile(args.systemPromptFile, "utf8")
     : undefined;
   providerUsageCaptures.length = 0;
   providerUsageCaptureLogs.length = 0;
@@ -748,6 +770,7 @@ async function main(): Promise<void> {
       phase: "start",
       agentId: args.agentId,
       sessionId: args.sessionId,
+      ...(args.sessionKey ? { sessionKey: args.sessionKey } : {}),
       workspaceDir: args.workspaceDir,
     }),
   );
@@ -762,9 +785,19 @@ async function main(): Promise<void> {
       {
         agentId: args.agentId,
         sessionId: args.sessionId,
+        ...(args.sessionKey ? { sessionKey: args.sessionKey } : {}),
         workspaceDir: args.workspaceDir,
         message: prompt,
         extraSystemPrompt,
+        systemPromptOverride,
+        ...(args.toolAllow || args.toolDeny
+          ? {
+              toolPolicyOverride: {
+                ...(args.toolAllow ? { allow: args.toolAllow } : {}),
+                ...(args.toolDeny ? { deny: args.toolDeny } : {}),
+              },
+            }
+          : {}),
         runId,
         onAgentEvent: (evt) => {
           if (evt.stream === "usage") {
@@ -902,9 +935,19 @@ async function main(): Promise<void> {
     split: args.split,
     agentId: args.agentId,
     sessionId: args.sessionId,
+    ...(args.sessionKey ? { sessionKey: args.sessionKey } : {}),
     workspaceDir: args.workspaceDir,
     promptFile: args.promptFile,
     ...(args.extraSystemPromptFile ? { extraSystemPromptFile: args.extraSystemPromptFile } : {}),
+    ...(args.systemPromptFile ? { systemPromptFile: args.systemPromptFile } : {}),
+    ...(args.toolAllow || args.toolDeny
+      ? {
+          toolPolicyOverride: {
+            ...(args.toolAllow ? { allow: args.toolAllow } : {}),
+            ...(args.toolDeny ? { deny: args.toolDeny } : {}),
+          },
+        }
+      : {}),
     runProtocol: args.runProtocol,
     startedAt: new Date(startedAt).toISOString(),
     endedAt: new Date(endedAt).toISOString(),
@@ -915,6 +958,15 @@ async function main(): Promise<void> {
     instanceId: args.instanceId,
     agentId: args.agentId,
     sessionId: args.sessionId,
+    ...(args.sessionKey ? { sessionKey: args.sessionKey } : {}),
+    ...(args.toolAllow || args.toolDeny
+      ? {
+          toolPolicyOverride: {
+            ...(args.toolAllow ? { allow: args.toolAllow } : {}),
+            ...(args.toolDeny ? { deny: args.toolDeny } : {}),
+          },
+        }
+      : {}),
     provider,
     model,
     durationMs: endedAt - startedAt,

@@ -213,6 +213,36 @@ describe("Agent-specific tool filtering", () => {
     expect(toolNames).toContain("apply_patch");
   });
 
+  it("applies per-run tool policy after configured tool policy", () => {
+    const tools = createOpenClawCodingTools({
+      config: {
+        tools: {
+          profile: "coding",
+          exec: {
+            applyPatch: { enabled: true },
+          },
+        },
+      },
+      sessionKey: "agent:main:main",
+      workspaceDir: "/tmp/test",
+      agentDir: "/tmp/agent",
+      modelProvider: "openai",
+      modelId: "gpt-5.2",
+      toolPolicyOverride: {
+        allow: ["read", "exec"],
+        deny: ["write", "edit", "apply_patch"],
+      },
+    });
+
+    const toolNames = tools.map((t) => t.name);
+    expect(toolNames).toContain("read");
+    expect(toolNames).toContain("exec");
+    expect(toolNames).not.toContain("write");
+    expect(toolNames).not.toContain("edit");
+    expect(toolNames).not.toContain("apply_patch");
+    expect(toolNames).not.toContain("message");
+  });
+
   it("defaults apply_patch to workspace-only (blocks traversal)", async () => {
     await withApplyPatchEscapeCase({}, async ({ applyPatchTool, escapedPath, patch }) => {
       await expect(applyPatchTool.execute("tc1", { input: patch })).rejects.toThrow(

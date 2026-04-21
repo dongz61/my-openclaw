@@ -524,6 +524,8 @@ function runAgentAttempt(params: {
     lane: params.opts.lane,
     abortSignal: params.opts.abortSignal,
     extraSystemPrompt: params.opts.extraSystemPrompt,
+    systemPromptOverride: params.opts.systemPromptOverride,
+    ...(params.opts.toolPolicyOverride ? { toolPolicyOverride: params.opts.toolPolicyOverride } : {}),
     inputProvenance: params.opts.inputProvenance,
     streamParams: params.opts.streamParams,
     agentDir: params.agentDir,

@@ -11,20 +11,18 @@ What this script does:
 6. Export git diff as patch.diff
 7. Build predictions.jsonl for SWE-bench
 8. Optionally run SWE-bench evaluation
-
-Designed around the manual workflow that was already verified by hand.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import os
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 
 DEFAULT_DATASET = "SWE-bench/SWE-bench_Lite"
@@ -156,12 +154,6 @@ def ensure_openclaw_agent(agent_name: str, workspace_dir: Path, model: str) -> N
     )
 
 
-def write_prompt_file(prompt_path: Path, problem_statement: str) -> None:
-    print_step(f"Writing prompt file: {prompt_path}")
-    prompt_path.parent.mkdir(parents=True, exist_ok=True)
-    prompt_path.write_text(SYSTEM_TASK_PREFIX + problem_statement, encoding="utf-8")
-
-
 SYSTEM_TASK_PREFIX = """You are solving one SWE-bench Lite task.
 
 Rules:
@@ -178,9 +170,23 @@ Issue description:
 """
 
 
+def write_prompt_file(prompt_path: Path, problem_statement: str) -> None:
+    print_step(f"Writing prompt file: {prompt_path}")
+    prompt_path.parent.mkdir(parents=True, exist_ok=True)
+    prompt_path.write_text(SYSTEM_TASK_PREFIX + problem_statement, encoding="utf-8")
+
+
+def write_text_file(path: Path, content: str) -> None:
+    print_step(f"Writing prompt file: {path}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
+
+
 def invoke_openclaw(
     *,
     agent_name: str,
+    session_id: str,
+    session_key: str,
     workspace_dir: Path,
     prompt_path: Path,
     extra_system_prompt_file: Path | None,
@@ -193,9 +199,13 @@ def invoke_openclaw(
     dataset_name: str,
     split: str,
     run_protocol: str,
+    system_prompt_file: Path | None = None,
+    tool_allow: list[str] | None = None,
+    tool_deny: list[str] | None = None,
 ) -> str:
     print_step("Invoking OpenClaw")
-    session_id = f"swebench-{sanitize_name(instance_id)}"
+    if extra_system_prompt_file and system_prompt_file:
+        raise RuntimeError("Pass only one of extra_system_prompt_file or system_prompt_file.")
     script_path = Path(__file__).resolve().parent / "run_openclaw_trace.ts"
     result = run_cmd(
         [
@@ -207,6 +217,8 @@ def invoke_openclaw(
             agent_name,
             "--session-id",
             session_id,
+            "--session-key",
+            session_key,
             "--workspace-dir",
             str(workspace_dir),
             "--prompt-file",
@@ -217,6 +229,30 @@ def invoke_openclaw(
                     str(extra_system_prompt_file),
                 ]
                 if extra_system_prompt_file
+                else []
+            ),
+            *(
+                [
+                    "--system-prompt-file",
+                    str(system_prompt_file),
+                ]
+                if system_prompt_file
+                else []
+            ),
+            *(
+                [
+                    "--tool-allow",
+                    ",".join(tool_allow),
+                ]
+                if tool_allow
+                else []
+            ),
+            *(
+                [
+                    "--tool-deny",
+                    ",".join(tool_deny),
+                ]
+                if tool_deny
                 else []
             ),
             "--manifest-path",
@@ -286,9 +322,17 @@ def run_evaluation(
     run_id: str,
     report_dir: Path,
     max_workers: int,
+    cache_level: str = "instance",
 ) -> subprocess.CompletedProcess[str]:
     print_step("Running SWE-bench evaluation")
     report_dir.mkdir(parents=True, exist_ok=True)
+    eval_log_dir = report_dir / "logs" / "run_evaluation" / run_id
+    if eval_log_dir.exists():
+        print(f"Removing stale evaluation logs: {eval_log_dir}")
+        shutil.rmtree(eval_log_dir)
+    for stale_report in report_dir.glob(f"*.{run_id}.json"):
+        print(f"Removing stale evaluation report: {stale_report}")
+        stale_report.unlink()
     return run_cmd(
         [
             sys.executable,
@@ -308,6 +352,8 @@ def run_evaluation(
             run_id,
             "--report_dir",
             str(report_dir),
+            "--cache_level",
+            cache_level,
         ],
         cwd=report_dir,
     )
@@ -331,6 +377,25 @@ def resolve_experiment_dir(base_dir: Path, experiment_tag: str) -> Path:
     if experiment_tag == "baseline":
         return base_dir / "outputs_baseline"
     return base_dir / f"outputs_{experiment_tag}"
+
+
+def build_run_session_values(
+    *,
+    agent_name: str,
+    instance_id: str,
+    experiment_tag: str,
+    stage: str,
+    run_slug: str,
+) -> dict[str, str]:
+    instance_slug = sanitize_name(instance_id)
+    stage_slug = sanitize_tag(stage)
+    return {
+        "session_id": f"swebench-{instance_slug}-{experiment_tag}-{stage_slug}-{run_slug}",
+        "session_key": (
+            f"agent:{agent_name}:swebench:{experiment_tag}:{instance_slug}:"
+            f"{stage_slug}:{run_slug}"
+        ),
+    }
 
 
 def build_paths(base_dir: Path, instance_id: str, experiment_tag: str) -> dict[str, Path]:
@@ -399,6 +464,15 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--system-prompt-file",
+        default="",
+        help=(
+            "Optional complete system prompt replacement for SWE-bench runs. "
+            "Disables the default extra system prompt unless --extra-system-prompt-file "
+            "is explicitly provided, which remains invalid."
+        ),
+    )
+    parser.add_argument(
         "--agent-name",
         default=None,
         help="OpenClaw agent name. Default: swebench-<instance_id>",
@@ -408,6 +482,12 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=1,
         help="SWE-bench evaluation max_workers",
+    )
+    parser.add_argument(
+        "--eval-cache-level",
+        choices=["none", "base", "env", "instance"],
+        default="instance",
+        help="SWE-bench image cache level for evaluation cleanup. Defaults to instance.",
     )
     parser.add_argument(
         "--skip-eval",
@@ -456,7 +536,15 @@ def main() -> int:
         item = load_instance(args.dataset_name, args.split, instance_id)
 
     agent_name = args.agent_name or f"swebench-{instance_id}"
-    run_id = f"openclaw_{sanitize_name(instance_id)}"
+    run_slug = uuid4().hex
+    eval_run_id = f"openclaw_{sanitize_name(instance_id)}"
+    session_values = build_run_session_values(
+        agent_name=agent_name,
+        instance_id=instance_id,
+        experiment_tag=experiment_tag,
+        stage="single",
+        run_slug=run_slug,
+    )
 
     paths = build_paths(base_dir, instance_id, experiment_tag)
     experiment_dir = paths["experiment_dir"]
@@ -465,7 +553,6 @@ def main() -> int:
     patch_path = paths["patch_path"]
     predictions_path = paths["predictions_path"]
     report_dir = paths["report_dir"]
-    run_dir = paths["run_dir"]
     manifest_path = paths["manifest_path"]
     events_path = paths["events_path"]
     summary_path = paths["summary_path"]
@@ -475,11 +562,26 @@ def main() -> int:
     calls_path = paths["calls_path"]
     verification_path = paths["verification_path"]
     run_report_path = paths["run_report_path"]
+    extra_system_prompt_arg = args.extra_system_prompt_file
+    if (
+        args.system_prompt_file
+        and "--extra-system-prompt-file" not in sys.argv
+        and extra_system_prompt_arg == str(DEFAULT_EXTRA_SYSTEM_PROMPT_FILE)
+    ):
+        extra_system_prompt_arg = ""
+
     extra_system_prompt_file = (
-        Path(args.extra_system_prompt_file).expanduser().resolve()
-        if args.extra_system_prompt_file
+        Path(extra_system_prompt_arg).expanduser().resolve()
+        if extra_system_prompt_arg
         else None
     )
+    system_prompt_file = (
+        Path(args.system_prompt_file).expanduser().resolve()
+        if args.system_prompt_file
+        else None
+    )
+    if extra_system_prompt_file and system_prompt_file:
+        raise RuntimeError("Pass only one of --extra-system-prompt-file or --system-prompt-file")
 
     print_step("Resolved directories")
     print(f"base_dir       : {base_dir}")
@@ -490,10 +592,14 @@ def main() -> int:
     print(f"patch_path     : {patch_path}")
     print(f"predictions    : {predictions_path}")
     print(f"report_dir     : {report_dir}")
-    print(f"run_dir        : {run_dir}")
     print(f"agent_name     : {agent_name}")
+    print(f"run_slug       : {run_slug}")
+    print(f"eval_run_id    : {eval_run_id}")
+    print(f"session_id     : {session_values['session_id']}")
+    print(f"session_key    : {session_values['session_key']}")
     print(f"model          : {args.model}")
     print(f"extra_system   : {extra_system_prompt_file or '(disabled)'}")
+    print(f"system_prompt  : {system_prompt_file or '(generated)'}")
 
     repo_name = item["repo"]
     base_commit = item["base_commit"]
@@ -518,9 +624,12 @@ def main() -> int:
 
     openclaw_output = invoke_openclaw(
         agent_name=agent_name,
+        session_id=session_values["session_id"],
+        session_key=session_values["session_key"],
         workspace_dir=workspace_dir,
         prompt_path=prompt_path,
         extra_system_prompt_file=extra_system_prompt_file,
+        system_prompt_file=system_prompt_file,
         manifest_path=manifest_path,
         events_path=events_path,
         summary_path=summary_path,
@@ -556,9 +665,10 @@ def main() -> int:
             split=args.split,
             instance_id=instance_id,
             predictions_path=predictions_path,
-            run_id=run_id,
+            run_id=eval_run_id,
             report_dir=report_dir,
             max_workers=args.max_workers,
+            cache_level=args.eval_cache_level,
         )
         print_step("Evaluation output")
         print(result.stdout)
