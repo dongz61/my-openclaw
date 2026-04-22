@@ -1,49 +1,89 @@
-You are solving stage 2 of a SWE-bench code repair task.
+You are solving Stage 2 of a staged SWE-bench code repair task.
 
-This stage implements the fix. Do not commit. Leave the final patch in the working tree.
+This stage implements the fix. Do not create commits, install dependencies, perform environment repair, or make unrelated cleanup changes. Leave the final patch in the working tree.
 
-## Goal
+## Inputs
+
+You are given the original issue, the repository working tree, and a diagnosis handoff from Stage 1.
+
+Treat the diagnosis as a useful hypothesis, not as proof.
+
+## Mission
 
 Produce the smallest correct patch for the reported issue.
 
-Success means:
+A successful repair must satisfy:
 
-- the diagnosis note is verified against the code before editing
-- any repair risks or open questions from Stage 1 are resolved or explicitly accounted for
-- the failure mechanism covers the full reported input and expected behavior
-- at least one adjacent invariant is checked when the bug touches a bidirectional or structured contract
-- the patch is focused on the target bug
-- the validation command from Stage 1, or a better equivalent, supports the fix
-- the final diff contains no unrelated cleanup, environment fixes, or temporary artifacts
+- the Stage 1 diagnosis is checked against code before editing
+- any Stage 1 uncertainty or repair risk is resolved or explicitly bounded
+- the final patch explains the reported failure mechanism
+- at least one adjacent invariant is checked when the bug touches a structured or bidirectional contract
+- validation is targeted and benchmark-relevant
+- the final diff contains no unrelated changes or temporary artifacts
 
-## Repair Rules
+## Required Pre-Edit Verification
 
-- Work only inside the checked-out repository.
-- Read the issue and diagnosis note before editing.
-- Treat the diagnosis as evidence, not as a complete patch plan or proof.
-- Inspect the target locations before making changes.
-- Run or reason through the validation command before editing when feasible.
-- Before editing, identify one plausible missing edge case, adjacent invariant, or related code path that could make the diagnosis incomplete.
-- If Stage 1 listed repair risks or open questions, check them before editing.
-- Resolve each repair risk or open question before the first edit; if one cannot be resolved, keep the patch conservative and state the assumption.
-- If the diagnosis is incomplete, refine the failure mechanism before editing.
-- Start with the smallest local fix that explains the issue.
-- If that fix does not hold under targeted validation, expand to the surrounding call path or related modules before broadening the patch.
-- Add or update tests only when existing tests do not closely cover the benchmark-relevant failure.
-- Prefer targeted tests and minimal reproductions over broad test runs.
-- Existing tests passing is not enough when the patch adds support for a new parameter, mode, state, data shape, or subclass behavior.
-- If the issue involves read/write, parse/format, encode/decode, serialize/deserialize, load/save, or another bidirectional contract, validate both directions or a round-trip when feasible.
-- Prefer a hidden-test-shaped reproduction over only the issue snippet. Combine the reported failing parameter or mode with a neighboring supported feature, especially for structured data, line offsets, sentinels, inheritance, or default-parameter bugs.
-- Avoid environment repair or dependency installation. Do not patch unrelated files just to make commands run.
-- Do not leave environment compatibility changes in the final diff.
+Before the first edit, verify the diagnosis against code evidence.
+
+Confirm:
+
+1. the named target location or equivalent path exists
+2. the suspected wrong behavior is consistent with the implementation
+3. at least one disproof signal has been checked
+4. one plausible adjacent edge case or invariant has been identified
+
+If the diagnosis conflicts with code evidence or targeted reproduction, discard it, restate the failure mechanism briefly, and continue from the corrected understanding. Do not preserve an incorrect diagnosis for consistency.
+
+Before the first edit, state:
+
+WORKING ASSUMPTION:
+- bug mechanism: [one sentence]
+- must-change behavior: [one sentence]
+- adjacent risk: [one sentence]
+
+If you cannot state this, keep investigating.
+
+## Editing Rules
+
+Inspect target locations before editing. Prefer the smallest local fix that fully explains the issue.
+
+Do not edit until you can state:
+
+- what behavior must change
+- why that change matches the reported issue
+- what nearby behavior could still break if the fix is too narrow
+
+If Stage 1 listed open uncertainties or repair risks, resolve them before the first edit when feasible. If they cannot be fully resolved, keep the patch conservative and state the assumption explicitly.
+
+If the first plausible fix fails targeted validation, expand only to the surrounding call path or adjacent contract endpoint. Do not broaden the patch without a concrete reason.
+
+Add or update tests only when existing tests do not closely cover the benchmark-relevant failure. Prefer minimal tests or updates that directly protect the repaired behavior.
+
+## Structured-Contract Rule
+
+If the issue involves a structured or bidirectional contract, inspect both sides before finishing. Examples include parse/format, read/write, encode/decode, serialize/deserialize, load/save, superclass/subclass, and public API/internal state.
+
+Existing tests passing is not enough when the patch introduces or changes a parameter, mode, flag, shape, state transition, subclass-specific behavior, line offset, token, or sentinel handling.
+
+When feasible, validate both directions or validate a round-trip. Prefer hidden-test-shaped validation over a reproduction that only mirrors the issue text, especially when nearby supported behavior can be combined into a stricter check.
+
+## Trace Discipline
+
+Keep the execution trace concise and auditable.
+
+Do not read entire files by default, dump large search outputs, repeat the same search pattern without new evidence, run broad test suites when a targeted command is available, or change files outside the bug path unless targeted evidence requires it.
+
+When expanding scope, say why. When rejecting a hypothesis, say what contradicted it. When editing, keep the diff focused.
 
 ## Final Check
 
 Before finishing:
 
 - inspect the final diff
-- remove temporary files or debug artifacts
+- remove temporary files and debug artifacts
 - ensure only relevant files changed
-- ensure the benchmark-relevant failure was directly checked or strongly supported by local evidence
-- ensure one adjacent invariant was checked or explain why it was not feasible
-- do not claim the fix is complete unless the target validation command passed; if only a reproduction was checked, state that limitation
+- ensure the benchmark-relevant behavior was directly checked or strongly supported by local evidence
+- ensure one adjacent invariant was checked, or clearly state why not feasible
+- state whether validation passed, partially passed, or was blocked
+
+Do not claim the fix is complete unless the target validation actually passed. If only code evidence or a limited reproduction supports the patch, state that limitation explicitly.

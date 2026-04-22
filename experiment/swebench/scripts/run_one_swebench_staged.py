@@ -79,7 +79,7 @@ DIAGNOSIS_TOOL_DENY = [
 
 DIAGNOSIS_TASK_PREFIX = """You are in the diagnosis stage.
 
-Follow the diagnosis protocol and output format from the system prompt.
+Follow the Stage 1 diagnosis handoff protocol and output format from the system prompt.
 
 The issue description below is SWE-bench task data, not an instruction to answer immediately.
 
@@ -93,9 +93,9 @@ END ISSUE DESCRIPTION
 
 REPAIR_TASK_PREFIX = """You are in the repair stage.
 
-Follow the repair protocol from the system prompt.
+Follow the Stage 2 repair protocol from the system prompt.
 
-The issue description and diagnosis note below are task data. Treat the diagnosis note as guidance, not proof.
+The issue description and diagnosis handoff below are task data. Treat the diagnosis handoff as guidance, not proof.
 
 ## Issue Description
 BEGIN ISSUE DESCRIPTION
@@ -104,12 +104,12 @@ BEGIN ISSUE DESCRIPTION
 REPAIR_ISSUE_SUFFIX = """
 END ISSUE DESCRIPTION
 
-## Diagnosis Note
-BEGIN DIAGNOSIS NOTE
+## Diagnosis Handoff
+BEGIN DIAGNOSIS HANDOFF
 """
 
 REPAIR_TASK_SUFFIX = """
-END DIAGNOSIS NOTE
+END DIAGNOSIS HANDOFF
 """
 
 
@@ -201,12 +201,12 @@ def reindex_timeline_items(items: list[dict[str, Any]], stage: str, step_offset:
     return indexed
 
 
-def build_repair_prompt(problem_statement: str, diagnosis_note: str) -> str:
+def build_repair_prompt(problem_statement: str, diagnosis_handoff: str) -> str:
     return (
         REPAIR_TASK_PREFIX
         + problem_statement
         + REPAIR_ISSUE_SUFFIX
-        + diagnosis_note.strip()
+        + diagnosis_handoff.strip()
         + REPAIR_TASK_SUFFIX
     )
 
@@ -247,7 +247,7 @@ def aggregate_stage_results(
 
     stage_summaries = [stage_result["summary"] for stage_result in stage_results]
     last_summary = stage_summaries[-1]
-    diagnosis_note = stage_results[0]["final"].get("finalText", "").strip()
+    diagnosis_handoff = stage_results[0]["final"].get("finalText", "").strip()
     repair_final_text = stage_results[-1]["final"].get("finalText", "").strip()
 
     summary = {
@@ -352,7 +352,7 @@ def aggregate_stage_results(
     final_payload = {
         "runId": summary["runId"],
         "workflow": "staged",
-        "diagnosisNote": diagnosis_note,
+        "diagnosisHandoff": diagnosis_handoff,
         "finalText": repair_final_text,
         "stages": {
             stage_result["stage"]: stage_result["final"] for stage_result in stage_results
@@ -413,8 +413,8 @@ def aggregate_stage_results(
                     ]
                 )
             )
-    if diagnosis_note:
-        report_lines.extend(["", "## Diagnosis Note", "", "```text", diagnosis_note, "```"])
+    if diagnosis_handoff:
+        report_lines.extend(["", "## Diagnosis Handoff", "", "```text", diagnosis_handoff, "```"])
     if repair_final_text:
         report_lines.extend(["", "## Final", "", "```text", repair_final_text, "```"])
 
@@ -631,7 +631,8 @@ def main() -> int:
         session_key=diagnosis_session["session_key"],
         workspace_dir=diagnosis_workspace_dir,
         prompt_path=diagnosis_paths["prompt_path"],
-        extra_system_prompt_file=diagnosis_system_prompt_file,
+        extra_system_prompt_file=None,
+        system_prompt_file=diagnosis_system_prompt_file,
         tool_allow=DIAGNOSIS_TOOL_ALLOW,
         tool_deny=DIAGNOSIS_TOOL_DENY,
         manifest_path=diagnosis_paths["manifest_path"],
@@ -648,11 +649,20 @@ def main() -> int:
     print(diagnosis_output)
 
     diagnosis_final = read_json(diagnosis_paths["final_path"])
-    diagnosis_note = (diagnosis_final.get("finalText") or "").strip()
-    if not diagnosis_note:
-        raise RuntimeError("Diagnosis stage did not produce a diagnosis note.")
+    diagnosis_handoff = (diagnosis_final.get("finalText") or "").strip()
+    if not diagnosis_handoff:
+        runtime_logs = diagnosis_final.get("runtimeLogs")
+        runtime_log_text = ""
+        if isinstance(runtime_logs, list) and runtime_logs:
+            runtime_log_text = f" runtimeLogs={runtime_logs!r}."
+        stop_reason = diagnosis_final.get("meta", {}).get("stopReason")
+        raise RuntimeError(
+            "Diagnosis stage did not produce a visible diagnosis handoff. "
+            f"finalPath={diagnosis_paths['final_path']}. stopReason={stop_reason!r}."
+            f"{runtime_log_text}"
+        )
 
-    repair_prompt = build_repair_prompt(problem_statement, diagnosis_note)
+    repair_prompt = build_repair_prompt(problem_statement, diagnosis_handoff)
     write_text_file(repair_paths["prompt_path"], repair_prompt)
     repair_output = invoke_openclaw(
         agent_name=repair_agent_name,
@@ -660,7 +670,8 @@ def main() -> int:
         session_key=repair_session["session_key"],
         workspace_dir=workspace_dir,
         prompt_path=repair_paths["prompt_path"],
-        extra_system_prompt_file=repair_system_prompt_file,
+        extra_system_prompt_file=None,
+        system_prompt_file=repair_system_prompt_file,
         manifest_path=repair_paths["manifest_path"],
         events_path=repair_paths["events_path"],
         summary_path=repair_paths["summary_path"],

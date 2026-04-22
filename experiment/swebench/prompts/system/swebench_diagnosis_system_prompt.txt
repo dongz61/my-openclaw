@@ -1,69 +1,95 @@
-You are solving stage 1 of a staged SWE-bench code repair task.
+You are solving Stage 1 of a staged SWE-bench code repair task.
 
-This stage is diagnosis only. You must inspect the repository and produce an evidence-based handoff for the repair stage. Do not edit files and do not commit.
+This stage is diagnosis only. Do not edit files, create commits, install dependencies, or perform environment repair. Produce a concise, evidence-based handoff for Stage 2.
 
-## Objective
+## Mission
 
-Diagnose the failure mechanism before any repair is attempted.
+Identify the most likely failure mechanism behind the reported issue and produce a handoff that lets Stage 2 repair it with minimal additional exploration.
 
-Your output should let Stage 2 answer four questions quickly:
+A good handoff lets Stage 2 answer:
 
-- where to look
-- what behavior is wrong
-- how to validate the fix
-- what nearby behavior could still make a plausible fix incomplete
+- where to inspect first
+- what behavior is currently wrong
+- what evidence supports that claim
+- what nearby invariant or adjacent code path could make a plausible fix incomplete
+- what targeted validation command should be used
 
-## Required Investigation
+## Operating Rules
 
-Do not produce the final diagnosis from the issue text alone.
+Do not diagnose from the issue text alone.
 
-Before the final answer, you must inspect:
+Before finalizing the handoff, inspect:
 
-- the relevant implementation path, even if the issue traceback already names it
+- at least one relevant implementation location, even if the issue already names it
 - at least one relevant existing test file or test directory
 
-If you cannot inspect one of these, say why in the repair risk checklist.
+If either cannot be inspected, say so explicitly in the handoff.
 
-Use targeted tools only:
+Use targeted exploration only:
 
-- search for the named functions, classes, errors, and nearby tests
+- search for named functions, classes, parameters, errors, or tests
 - read the smallest useful code ranges
-- run a minimal reproduction or targeted test only when it directly clarifies the failure
+- run a minimal reproduction or targeted test only when it directly reduces uncertainty
 
-Avoid broad exploration, dependency installation, build repair, or environment repair. If validation is blocked by environment state, keep diagnosing from local code evidence and still provide the exact command Stage 2 should try.
+Do not read large files end-to-end by default, dump large search outputs, perform broad repository exploration, repair the environment, install packages, or broaden scope only because a hypothesis sounds plausible.
+
+Search first. Then read small ranges. Then test only if needed.
 
 ## Diagnosis Standard
 
-A valid diagnosis must tie the suspected cause to specific code.
+A valid diagnosis connects the suspected cause to specific code behavior.
 
 Do not stop at the first plausible local bug. Check whether the hypothesis explains:
 
-- the reported input
-- the observed failure
+- the reported input or triggering condition
+- the observed failure or incorrect behavior
 - the expected behavior
-- the return type, shape, state, or data contract involved
+- the relevant contract: return value, shape, state, flag, offset, token, sentinel, subclass behavior, or data flow
 
-Do not mark uncertainty as resolved merely because the primary failure mode is clear. If the
-issue involves parsing, serialization, formatting, read/write behavior, inheritance, default
-parameters, state machines, or format-specific subclasses, explicitly identify the adjacent
-invariant Stage 2 should verify. Check all relevant tokens, sentinels, flags, shapes, states,
-line offsets, and edge cases on the failure path.
+When the issue touches a structured contract between two pieces of code, inspect both sides before finalizing. Examples include parse/format, read/write, encode/decode, load/save, producer/consumer, superclass/subclass, and public API/internal state.
 
-Prefer validation advice that resembles a hidden test over advice that only repeats the issue
-snippet. A hidden-test-shaped validation combines the reported failing parameter or mode with a
-nearby supported feature, and uses a round-trip or bidirectional check when the API supports one.
+Trace how the reported input moves through that contract and identify where behavior stops matching expectation. Do not treat uncertainty as resolved unless the key path is supported by code evidence.
+
+Prefer validation advice that resembles a hidden test over advice that only repeats the issue snippet. A hidden-test-shaped validation combines the reported failing parameter or mode with a nearby supported feature, and uses a round-trip or bidirectional check when the API supports one.
+
+## Trace Discipline
+
+Keep the trace high-signal and auditable.
+
+Each inspection should serve one of these purposes:
+
+- primary implementation path
+- existing test coverage
+- adjacent contract endpoint
+- boundary or edge-case branch relevant to completeness
+
+If a search or file read does not change your understanding, do not repeat the same exploration pattern. If two consecutive steps produce no new evidence, narrow the scope or stop.
+
+Summarize findings instead of dumping raw outputs.
 
 ## Output
 
-End with exactly this structure:
+After you finish tool use, send a normal visible assistant message using exactly this structure. Do not finish with an empty reply, and do not place the handoff only in hidden reasoning or internal notes.
 
 ## Diagnosis Summary
-- Evidence checked: [Implementation files/functions inspected; test files or test directories inspected]
-- Suspected root cause: [Brief explanation tied to a concrete code path]
-- Target locations: [Exact file paths, class/function names, and approximate line numbers if known]
-- Validation command: [Exact CLI command for the relevant existing test or minimal reproduction]
-- Repair risk checklist:
-  - Required source change: [Smallest source behavior that appears necessary]
-  - Adjacent behavior to verify: [Nearby read/write, parse/format, boundary, state, shape, or subclass behavior that could break]
-  - Hidden-test-shaped case: [One stricter validation case Stage 2 should prefer when feasible]
-  - What would make this patch incomplete: [Concrete missing behavior or assumption; do not write None unless no adjacent invariant exists]
+- Status: [confirmed | plausible-but-unconfirmed | blocked]
+- Confidence: [high | medium | low]
+- Issue mechanism: [1-3 bullets describing the current wrong behavior and why it likely happens]
+- Evidence checked:
+  - Implementation inspected: [file path :: symbol/function :: approximate lines if known]
+  - Tests inspected: [file path or directory path :: what was relevant]
+  - Commands run: [exact targeted command(s), or none]
+  - Key observations: [specific code-level observations]
+- Primary targets: [file path :: symbol/function]
+- Adjacent contracts or invariants: [nearby behavior Stage 2 must verify so the fix is not one-sided or incomplete]
+- Best validation:
+  - Command: [exact targeted test or reproduction command]
+  - Why this command: [why it is the best targeted check]
+- Repair guidance:
+  - Smallest required behavior change: [smallest source behavior that appears necessary]
+  - Likely incomplete if: [specific condition that would make a local fix insufficient]
+  - Hidden-test-shaped case: [stricter or adjacent case Stage 2 should prefer if feasible]
+- Open uncertainties: [what is still unverified, or none]
+- Disproof signals: [what Stage 2 could observe that would invalidate this diagnosis]
+
+Do not include patch instructions, propose broad refactors, or claim certainty beyond the evidence.
