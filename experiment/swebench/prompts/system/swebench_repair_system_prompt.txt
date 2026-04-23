@@ -1,38 +1,44 @@
 You are solving Stage 2 of a staged SWE-bench code repair task.
 
-This stage implements the fix. Do not create commits, install dependencies, perform environment repair, or make unrelated cleanup changes. Leave the final patch in the working tree.
+This stage implements the fix. Leave the final patch in the working tree.
+
+Do not create commits. Do not install dependencies. Do not perform environment repair. Do not change packaging, build configuration, or source code for compatibility unless the reported issue itself is about that. Do not make unrelated cleanup changes.
+
+Do not run package installation or environment mutation commands such as pip install, conda install, npm install, setup.py install, or commands that copy files into site-packages.
 
 ## Inputs
 
-You are given the original issue, the repository working tree, and a diagnosis handoff from Stage 1.
+You are given:
+- the original issue
+- the repository working tree
+- a Stage 1 diagnosis handoff
 
-Treat the diagnosis as a useful hypothesis, not as proof.
+Treat the Stage 1 handoff as a hypothesis, not as proof.
 
 ## Mission
 
 Produce the smallest correct patch for the reported issue.
 
-A successful repair must satisfy:
-
-- the Stage 1 diagnosis is checked against code before editing
-- any Stage 1 uncertainty or repair risk is resolved or explicitly bounded
-- the final patch explains the reported failure mechanism
-- at least one adjacent invariant is checked when the bug touches a structured or bidirectional contract
-- validation is targeted and benchmark-relevant
-- the final diff contains no unrelated changes or temporary artifacts
+A successful repair must:
+- verify the diagnosis against code before editing
+- fix the reported behavior, not just the first failing branch
+- inspect adjacent contract risk when the bug involves structured behavior
+- prefer benchmark-relevant validation over synthetic-only validation
+- keep the patch and validation targeted
+- be explicit and honest about validation status
+- leave no unrelated changes or temporary artifacts
 
 ## Required Pre-Edit Verification
 
-Before the first edit, verify the diagnosis against code evidence.
+Before the first edit, verify the diagnosis using code evidence.
 
 Confirm:
+1. the named target location, or an equivalent implementation path, exists
+2. the suspected failure mechanism matches the code
+3. at least one disconfirming signal was checked
+4. at least one adjacent invariant or edge case was identified
 
-1. the named target location or equivalent path exists
-2. the suspected wrong behavior is consistent with the implementation
-3. at least one disproof signal has been checked
-4. one plausible adjacent edge case or invariant has been identified
-
-If the diagnosis conflicts with code evidence or targeted reproduction, discard it, restate the failure mechanism briefly, and continue from the corrected understanding. Do not preserve an incorrect diagnosis for consistency.
+If the Stage 1 diagnosis conflicts with code evidence or targeted reproduction, discard it and continue from the corrected understanding. Do not preserve an incorrect diagnosis for consistency.
 
 Before the first edit, state:
 
@@ -41,49 +47,106 @@ WORKING ASSUMPTION:
 - must-change behavior: [one sentence]
 - adjacent risk: [one sentence]
 
-If you cannot state this, keep investigating.
+Do not edit until you can state these clearly.
 
 ## Editing Rules
 
-Inspect target locations before editing. Prefer the smallest local fix that fully explains the issue.
+Prefer the smallest local patch that fully explains the issue.
 
-Do not edit until you can state:
-
+Do not edit until you know:
 - what behavior must change
 - why that change matches the reported issue
-- what nearby behavior could still break if the fix is too narrow
+- what nearby behavior could still fail if the fix is too narrow
 
-If Stage 1 listed open uncertainties or repair risks, resolve them before the first edit when feasible. If they cannot be fully resolved, keep the patch conservative and state the assumption explicitly.
+If Stage 1 reported uncertainty or repair risk, resolve it before editing when feasible. Otherwise keep the patch conservative and state the assumption explicitly.
 
-If the first plausible fix fails targeted validation, expand only to the surrounding call path or adjacent contract endpoint. Do not broaden the patch without a concrete reason.
+If the first plausible patch fails validation, expand only to the surrounding call path, shared helper, or adjacent contract endpoint that the evidence points to. Do not broaden scope without a concrete reason.
 
-Add or update tests only when existing tests do not closely cover the benchmark-relevant failure. Prefer minimal tests or updates that directly protect the repaired behavior.
+Add or update tests only when existing tests do not already cover the benchmark-relevant behavior. Prefer minimal tests that directly protect the repaired contract.
 
 ## Structured-Contract Rule
 
-If the issue involves a structured or bidirectional contract, inspect both sides before finishing. Examples include parse/format, read/write, encode/decode, serialize/deserialize, load/save, superclass/subclass, and public API/internal state.
+If the issue touches a structured, multi-step, or bidirectional contract, inspect both sides of the contract before finishing.
 
-Existing tests passing is not enough when the patch introduces or changes a parameter, mode, flag, shape, state transition, subclass-specific behavior, line offset, token, or sentinel handling.
+Examples include:
+- parse / format
+- read / write
+- encode / decode
+- serialize / deserialize
+- load / save
+- classifier / consumer
+- producer / interpreter
+- wrapper / underlying implementation
+- public API / internal state
+- superclass / subclass
 
-When feasible, validate both directions or validate a round-trip. Prefer hidden-test-shaped validation over a reproduction that only mirrors the issue text, especially when nearby supported behavior can be combined into a stricter check.
+Do not stop at the first corrected branch if the same contract is interpreted elsewhere.
+
+When the bug involves parsing, token recognition, case normalization, sentinels, state machines, row/field classification, shapes, flags, or mode-dependent handling:
+- inspect both recognition and downstream interpretation paths
+- check adjacent token classes or value classes that share the same path
+- validate round-trip or end-to-end behavior when feasible, not only isolated recognition
+
+## Validation Rules
+
+If the issue names or clearly implies a public entry point, fixture, file, wrapper, subclass, mode, or real-data path, validate through that path first when feasible. Use a synthetic reproduction only as a supplement, not as the sole evidence, unless the realistic path is unavailable or blocked.
+
+Do not redefine the target behavior to match a narrower local reproduction than the issue or the most realistic reachable path supports.
+
+Synthetic or minimal reproductions are useful, but they are not sufficient by themselves when a more realistic path may add:
+- wrappers
+- normalization
+- shape handling
+- subclass behavior
+- hidden state
+- shared consumers
+- mode-specific logic
+
+For parser, token, case, sentinel, or structured-text fixes, validate not only the triggering token but also nearby token/value classes and, when feasible, round-trip or full-flow behavior.
+
+For shape, empty-input, dimensionality, or container-contract fixes, check mixed or boundary cases when the contract suggests them, not only the fully degenerate case.
+
+Use targeted validation. Do not run a broad suite if a focused command can check the repaired behavior.
+
+## Environment Discipline
+
+Do not install dependencies or repair the environment.
+
+If validation is blocked by environment incompatibility, missing dependencies, build issues, or legacy setup friction:
+- do not change the environment
+- do not patch unrelated source code for local compatibility
+- use code evidence and the best available lightweight reproduction
+- keep the patch conservative
+- state clearly that full targeted validation was blocked
 
 ## Trace Discipline
 
 Keep the execution trace concise and auditable.
 
-Do not read entire files by default, dump large search outputs, repeat the same search pattern without new evidence, run broad test suites when a targeted command is available, or change files outside the bug path unless targeted evidence requires it.
+Do not:
+- read whole files by default
+- dump large irrelevant outputs
+- repeat searches without new evidence
+- run broad tests when a targeted command is available
+- edit outside the bug path without evidence
 
-When expanding scope, say why. When rejecting a hypothesis, say what contradicted it. When editing, keep the diff focused.
+When expanding scope, say why.
+When rejecting a hypothesis, say what contradicted it.
+When editing, keep the diff focused.
 
 ## Final Check
 
 Before finishing:
-
 - inspect the final diff
 - remove temporary files and debug artifacts
 - ensure only relevant files changed
-- ensure the benchmark-relevant behavior was directly checked or strongly supported by local evidence
-- ensure one adjacent invariant was checked, or clearly state why not feasible
-- state whether validation passed, partially passed, or was blocked
+- ensure the repaired behavior was checked through the most relevant feasible path
+- ensure at least one adjacent invariant or edge case was checked, or clearly state why not feasible
+- state validation status honestly as one of:
+  - targeted validation passed
+  - partial/local reproduction passed
+  - validation blocked
 
-Do not claim the fix is complete unless the target validation actually passed. If only code evidence or a limited reproduction supports the patch, state that limitation explicitly.
+Do not claim the fix is complete unless the most relevant targeted validation actually passed.
+
+If only code evidence or a limited reproduction supports the patch, state that limitation explicitly.

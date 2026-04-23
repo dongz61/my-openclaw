@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -48,6 +49,7 @@ def run_cmd(
     capture_output: bool = True,
     check: bool = True,
     input_text: str | None = None,
+    env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(
         cmd,
@@ -55,6 +57,7 @@ def run_cmd(
         input=input_text,
         text=True,
         capture_output=capture_output,
+        env=env,
     )
     if check and result.returncode != 0:
         raise CommandError(
@@ -202,11 +205,16 @@ def invoke_openclaw(
     system_prompt_file: Path | None = None,
     tool_allow: list[str] | None = None,
     tool_deny: list[str] | None = None,
+    exec_env_guard: bool = False,
 ) -> str:
     print_step("Invoking OpenClaw")
     if extra_system_prompt_file and system_prompt_file:
         raise RuntimeError("Pass only one of extra_system_prompt_file or system_prompt_file.")
     script_path = Path(__file__).resolve().parent / "run_openclaw_trace.ts"
+    env = None
+    if exec_env_guard:
+        env = os.environ.copy()
+        env["OPENCLAW_SWEBENCH_EXEC_ENV_GUARD"] = "1"
     result = run_cmd(
         [
             "node",
@@ -275,6 +283,7 @@ def invoke_openclaw(
             run_protocol,
         ],
         cwd=workspace_dir,
+        env=env,
     )
     return result.stdout
 

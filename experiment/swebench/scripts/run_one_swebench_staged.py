@@ -76,6 +76,26 @@ DIAGNOSIS_TOOL_DENY = [
     "image",
     "image_generate",
 ]
+REPAIR_TOOL_ALLOW = ["read", "edit", "apply_patch", "exec", "process"]
+REPAIR_TOOL_DENY = [
+    "write",
+    "web_search",
+    "web_fetch",
+    "browser",
+    "canvas",
+    "message",
+    "gateway",
+    "agents_list",
+    "sessions_list",
+    "sessions_history",
+    "sessions_send",
+    "sessions_spawn",
+    "subagents",
+    "session_status",
+    "cron",
+    "image",
+    "image_generate",
+]
 
 DIAGNOSIS_TASK_PREFIX = """You are in the diagnosis stage.
 
@@ -635,6 +655,7 @@ def main() -> int:
         system_prompt_file=diagnosis_system_prompt_file,
         tool_allow=DIAGNOSIS_TOOL_ALLOW,
         tool_deny=DIAGNOSIS_TOOL_DENY,
+        exec_env_guard=True,
         manifest_path=diagnosis_paths["manifest_path"],
         events_path=diagnosis_paths["events_path"],
         summary_path=diagnosis_paths["summary_path"],
@@ -672,6 +693,9 @@ def main() -> int:
         prompt_path=repair_paths["prompt_path"],
         extra_system_prompt_file=None,
         system_prompt_file=repair_system_prompt_file,
+        tool_allow=REPAIR_TOOL_ALLOW,
+        tool_deny=REPAIR_TOOL_DENY,
+        exec_env_guard=True,
         manifest_path=repair_paths["manifest_path"],
         events_path=repair_paths["events_path"],
         summary_path=repair_paths["summary_path"],

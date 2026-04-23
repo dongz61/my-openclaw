@@ -173,6 +173,75 @@ async function validateScriptFileForShellBleed(params: {
   }
 }
 
+const shellCommandStartPattern = String.raw`(?:^|[;&|()]\s*|(?:bash|sh|zsh)\s+-lc\s+["'][^"']*)`;
+const optionalEnvPrefixPattern = String.raw`(?:(?:env\s+)?(?:[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|[^\s;&|()]+)\s+)*)`;
+
+const ENV_MUTATION_COMMAND_PATTERNS: Array<{ pattern: RegExp; label: string }> = [
+  {
+    label: "pip package mutation",
+    pattern: new RegExp(
+      `${shellCommandStartPattern}${optionalEnvPrefixPattern}(?:python3?|python|py)\\s+-m\\s+pip\\s+(?:install|uninstall|download|wheel)\\b`,
+      "i",
+    ),
+  },
+  {
+    label: "pip package mutation",
+    pattern: new RegExp(
+      `${shellCommandStartPattern}${optionalEnvPrefixPattern}pip(?:3|x)?\\s+(?:install|uninstall|download|wheel)\\b`,
+      "i",
+    ),
+  },
+  {
+    label: "Python setup/build command",
+    pattern: new RegExp(
+      `${shellCommandStartPattern}${optionalEnvPrefixPattern}(?:python3?|python|py)\\s+(?:\\./)?setup\\.py(?:\\s|$|[;&|()])`,
+      "i",
+    ),
+  },
+  {
+    label: "Conda environment mutation",
+    pattern: new RegExp(
+      `${shellCommandStartPattern}${optionalEnvPrefixPattern}(?:conda|mamba|micromamba)\\s+(?:install|update|remove|create|env\\s+(?:create|update|remove))\\b`,
+      "i",
+    ),
+  },
+  {
+    label: "Python project environment mutation",
+    pattern: new RegExp(
+      `${shellCommandStartPattern}${optionalEnvPrefixPattern}(?:uv\\s+(?:pip\\s+)?(?:install|sync|add|remove)|poetry\\s+(?:install|add|remove|update)|pdm\\s+(?:install|add|remove|update))\\b`,
+      "i",
+    ),
+  },
+  {
+    label: "JavaScript package mutation",
+    pattern: new RegExp(
+      `${shellCommandStartPattern}${optionalEnvPrefixPattern}(?:npm\\s+(?:install|i|add|update|ci)|pnpm\\s+(?:install|add|update|remove)|yarn\\s+(?:install|add|remove|upgrade))\\b`,
+      "i",
+    ),
+  },
+  {
+    label: "system package mutation",
+    pattern: new RegExp(
+      `${shellCommandStartPattern}${optionalEnvPrefixPattern}(?:apt(?:-get)?|apk|yum|dnf|brew)\\s+(?:install|remove|upgrade|update|add)\\b`,
+      "i",
+    ),
+  },
+];
+
+function resolveEnvMutationGuard() {
+  const raw = process.env.OPENCLAW_SWEBENCH_EXEC_ENV_GUARD?.trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "deny";
+}
+
+function detectEnvMutationCommand(command: string): string | null {
+  for (const entry of ENV_MUTATION_COMMAND_PATTERNS) {
+    if (entry.pattern.test(command)) {
+      return entry.label;
+    }
+  }
+  return null;
+}
+
 export function createExecTool(
   defaults?: ExecToolDefaults,
   // oxlint-disable-next-line typescript/no-explicit-any
@@ -249,6 +318,25 @@ export function createExecTool(
 
       if (!params.command) {
         throw new Error("Provide a command to start.");
+      }
+      if (resolveEnvMutationGuard()) {
+        const blockedKind = detectEnvMutationCommand(params.command);
+        if (blockedKind) {
+          return failedTextResult(
+            [
+              `exec blocked by SWE-bench environment guard: ${blockedKind}.`,
+              "Do not install dependencies, mutate package environments, or run packaging/build/setup commands for this task.",
+              "Use targeted source inspection, existing tests, or lightweight reproductions that do not alter the environment.",
+            ].join("\n"),
+            {
+              status: "failed",
+              exitCode: null,
+              durationMs: 0,
+              aggregated: "",
+              cwd: params.workdir?.trim() || defaults?.cwd || process.cwd(),
+            },
+          );
+        }
       }
 
       const maxOutput = DEFAULT_MAX_OUTPUT;

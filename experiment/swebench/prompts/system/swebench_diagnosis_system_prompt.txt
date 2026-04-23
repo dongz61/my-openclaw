@@ -50,6 +50,17 @@ When the issue touches a structured contract between two pieces of code, inspect
 
 Trace how the reported input moves through that contract and identify where behavior stops matching expectation. Do not treat uncertainty as resolved unless the key path is supported by code evidence.
 
+When the issue involves structured inputs, multi-part values, container or shape behavior, parser/token handling, read/write pairs, wrapper/helper paths, subclass behavior, flags or modes, masks, missing/default values, or state transitions, the handoff must identify a contract-boundary validation target.
+
+BEST_VALIDATION should cover:
+
+- the direct triggering case
+- one adjacent mixed or partial contract case that could disprove an overly local fix, when feasible
+
+A mixed or partial contract case is one where only part of the structure changes or degenerates while the rest remains valid, such as one field/axis/member being empty while another is non-empty, one side being defaulted while the other is explicit, one token class being normalized while adjacent classes still flow through the same consumer, one direction working while the reverse direction may fail, or a helper-level fix that may not hold through a public wrapper or subclass path.
+
+Do not enumerate many edge cases. Name the single highest-signal adjacent case in ADJACENT_CONTRACTS_OR_INVARIANTS and include it in BEST_VALIDATION when feasible. If no meaningful adjacent mixed or partial case exists, say so explicitly.
+
 Prefer validation advice that resembles a hidden test over advice that only repeats the issue snippet. A hidden-test-shaped validation combines the reported failing parameter or mode with a nearby supported feature, and uses a round-trip or bidirectional check when the API supports one.
 
 ## Trace Discipline

@@ -163,3 +163,16 @@ experiment/process.md
 experiment/README.md
 experiment/swebench/cache-trace-baseline-12907.system.txt
 experiment/swebench/cache-trace-minimal-12907.jsonl
+experiment/swebench/prompts/django__django-13768_prompt.txt
+experiment/swebench/prompts/matplotlib__matplotlib-24149_prompt.txt
+experiment/swebench/prompts/mwaskom__seaborn-3190_prompt.txt
+experiment/swebench/prompts/pallets__flask-4992_prompt.txt
+experiment/swebench/prompts/psf__requests-2674_prompt.txt
+experiment/swebench/prompts/pydata__xarray-4248_prompt.txt
+experiment/swebench/prompts/pylint-dev__pylint-7114_prompt.txt
+experiment/swebench/prompts/pytest-dev__pytest-6116_prompt.txt
+experiment/swebench/prompts/sphinx-doc__sphinx-8435_prompt.txt
+experiment/swebench/scripts/plot_workflow_comparison.py
+.gitignore
+experiment/figures/tool_calls_comparison.png
+experiment/figures/total_tokens_comparison.png

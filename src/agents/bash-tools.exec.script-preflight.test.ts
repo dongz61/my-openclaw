@@ -9,6 +9,132 @@ const isWin = process.platform === "win32";
 const describeNonWin = isWin ? describe.skip : describe;
 
 describeNonWin("exec script preflight", () => {
+  it("returns a failed tool result for SWE-bench environment mutation commands", async () => {
+    await withTempDir("openclaw-exec-env-guard-", async (tmp) => {
+      const previous = process.env.OPENCLAW_SWEBENCH_EXEC_ENV_GUARD;
+      process.env.OPENCLAW_SWEBENCH_EXEC_ENV_GUARD = "1";
+      try {
+        const tool = createExecTool({ host: "gateway", security: "full", ask: "off" });
+        const result = await tool.execute("call-env-guard", {
+          command: "python -m pip install -e .",
+          workdir: tmp,
+        });
+        const text = result.content.find((block) => block.type === "text")?.text ?? "";
+
+        expect(result.details.status).toBe("failed");
+        expect(text).toContain("exec blocked by SWE-bench environment guard");
+        expect(text).toContain("Do not install dependencies");
+      } finally {
+        if (previous === undefined) {
+          delete process.env.OPENCLAW_SWEBENCH_EXEC_ENV_GUARD;
+        } else {
+          process.env.OPENCLAW_SWEBENCH_EXEC_ENV_GUARD = previous;
+        }
+      }
+    });
+  });
+
+  it("blocks setup.py build commands behind shell wrappers under the SWE-bench guard", async () => {
+    await withTempDir("openclaw-exec-env-guard-", async (tmp) => {
+      const previous = process.env.OPENCLAW_SWEBENCH_EXEC_ENV_GUARD;
+      process.env.OPENCLAW_SWEBENCH_EXEC_ENV_GUARD = "1";
+      try {
+        const tool = createExecTool({ host: "gateway", security: "full", ask: "off" });
+        const result = await tool.execute("call-env-guard-setup", {
+          command: "cd astropy && python setup.py build_ext --inplace 2>&1 | tail -50",
+          workdir: tmp,
+        });
+        const text = result.content.find((block) => block.type === "text")?.text ?? "";
+
+        expect(result.details.status).toBe("failed");
+        expect(text).toContain("exec blocked by SWE-bench environment guard");
+        expect(text).toContain("Python setup/build command");
+        expect(text).toContain("packaging/build/setup commands");
+      } finally {
+        if (previous === undefined) {
+          delete process.env.OPENCLAW_SWEBENCH_EXEC_ENV_GUARD;
+        } else {
+          process.env.OPENCLAW_SWEBENCH_EXEC_ENV_GUARD = previous;
+        }
+      }
+    });
+  });
+
+  it("blocks setup.py build commands inside bash -lc wrappers under the SWE-bench guard", async () => {
+    await withTempDir("openclaw-exec-env-guard-", async (tmp) => {
+      const previous = process.env.OPENCLAW_SWEBENCH_EXEC_ENV_GUARD;
+      process.env.OPENCLAW_SWEBENCH_EXEC_ENV_GUARD = "1";
+      try {
+        const tool = createExecTool({ host: "gateway", security: "full", ask: "off" });
+        const result = await tool.execute("call-env-guard-setup-bash", {
+          command:
+            'bash -lc "cd /home/ubuntu/桌面/my-openclaw/experiment/swebench/workspaces/astropy__astropy-7746 && python setup.py build_ext --inplace 2>&1 | tail -50"',
+          workdir: tmp,
+        });
+        const text = result.content.find((block) => block.type === "text")?.text ?? "";
+
+        expect(result.details.status).toBe("failed");
+        expect(text).toContain("exec blocked by SWE-bench environment guard");
+        expect(text).toContain("Python setup/build command");
+      } finally {
+        if (previous === undefined) {
+          delete process.env.OPENCLAW_SWEBENCH_EXEC_ENV_GUARD;
+        } else {
+          process.env.OPENCLAW_SWEBENCH_EXEC_ENV_GUARD = previous;
+        }
+      }
+    });
+  });
+
+  it("blocks env-prefixed setup.py build commands under the SWE-bench guard", async () => {
+    await withTempDir("openclaw-exec-env-guard-", async (tmp) => {
+      const previous = process.env.OPENCLAW_SWEBENCH_EXEC_ENV_GUARD;
+      process.env.OPENCLAW_SWEBENCH_EXEC_ENV_GUARD = "1";
+      try {
+        const tool = createExecTool({ host: "gateway", security: "full", ask: "off" });
+        const result = await tool.execute("call-env-guard-setup-env", {
+          command: "cd astropy && PYTHONPATH=. python ./setup.py build_ext --inplace",
+          workdir: tmp,
+        });
+        const text = result.content.find((block) => block.type === "text")?.text ?? "";
+
+        expect(result.details.status).toBe("failed");
+        expect(text).toContain("exec blocked by SWE-bench environment guard");
+        expect(text).toContain("Python setup/build command");
+      } finally {
+        if (previous === undefined) {
+          delete process.env.OPENCLAW_SWEBENCH_EXEC_ENV_GUARD;
+        } else {
+          process.env.OPENCLAW_SWEBENCH_EXEC_ENV_GUARD = previous;
+        }
+      }
+    });
+  });
+
+  it("does not block searching for package-install text under the SWE-bench guard", async () => {
+    await withTempDir("openclaw-exec-env-guard-", async (tmp) => {
+      const previous = process.env.OPENCLAW_SWEBENCH_EXEC_ENV_GUARD;
+      process.env.OPENCLAW_SWEBENCH_EXEC_ENV_GUARD = "1";
+      try {
+        const tool = createExecTool({ host: "gateway", security: "full", ask: "off" });
+        const result = await tool.execute("call-env-guard-search", {
+          command: "printf '%s\\n' 'pip install -e .'",
+          workdir: tmp,
+        });
+        const text = result.content.find((block) => block.type === "text")?.text ?? "";
+
+        expect(result.details.status).toBe("completed");
+        expect(text).toContain("pip install -e .");
+      } finally {
+        if (previous === undefined) {
+          delete process.env.OPENCLAW_SWEBENCH_EXEC_ENV_GUARD;
+        } else {
+          process.env.OPENCLAW_SWEBENCH_EXEC_ENV_GUARD = previous;
+        }
+      }
+    });
+  });
+
   it("blocks shell env var injection tokens in python scripts before execution", async () => {
     await withTempDir("openclaw-exec-preflight-", async (tmp) => {
       const pyPath = path.join(tmp, "bad.py");
